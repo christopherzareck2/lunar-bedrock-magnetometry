@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper and this software."
+title: "Lunar Rover Magnetometry: reproduction code"
+type: software
+authors:
+  - family-names: Zareck
+    given-names: Christopher A.
+  - family-names: Narrett
+    given-names: Isaac S.
+  - family-names: Weiss
+    given-names: Benjamin P.
+  - family-names: Hoffman
+    given-names: Jeffrey A.
+license: MIT
+version: "1.0.0"
+date-released: "2026-10-05"
+keywords:
+  - lunar paleomagnetism
+  - rover magnetometry
+  - potential-field inversion
+  - SimPEG
+preferred-citation:
+  type: article
+  title: "Lunar Rover Magnetometry: Recovering Paleofield Intensity and Direction From Magnetized Bedrock"
+  authors:
+    - family-names: Narrett
+      given-names: Isaac S.
+    - family-names: Zareck
+      given-names: Christopher A.
+    - family-names: Weiss
+      given-names: Benjamin P.
+    - family-names: Hoffman
+      given-names: Jeffrey A.
+  journal: "The Planetary Science Journal"
+  year: 2026
+  notes: "In preparation. Update with volume, article number and DOI on publication."
