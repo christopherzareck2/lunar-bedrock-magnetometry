@@ -2,10 +2,9 @@
 (paper Sections 3.3.1, 5.1 and 5.5.2).
 
 Runs engine/scripts/background_magnetization_mc.py and engine/scripts/correlated_noise_requirement.py in the
-paper geometry: a 4 x 4 x 1 m prism standing on the ground, sensor at mid-height (0.5 m above the ground),
-drive-by from x = -8 to +8 m, as in analysis/a02. The survey helper in both scripts is replaced by one that
-builds this geometry (the prism is centred on the origin, so the sensor is at z = 0 and the background slab
-is attached to the prism base at z = -0.5 m).
+geometry of analysis/a02: a 4 x 4 x 1 m prism on the ground, sensor 0.5 m above the ground, drive-by from
+x = -8 to +8 m. The survey helper of both scripts is replaced by one for this geometry (prism centred on the
+origin, sensor at z = 0, background slab attached to the prism base at z = -0.5 m).
 
 Run:  python analysis/a05_background_and_correlated_noise.py [background|noise|both]
 Out:  results/analysis/a05_background_magnetization_mc_paper_geometry.json

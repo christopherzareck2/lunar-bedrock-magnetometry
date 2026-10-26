@@ -1,36 +1,38 @@
 """a06 - Isolated outcrop: robustness tests (paper Table 3, Sections 4.2 and 5.1).
 
-Same geometry, noise and solver as a02 (prism 4 x 4 x 1 m on the ground, sensor 0.5 m above the ground,
-1 m standoff, 1 cm sampling, sigma_B = 0.50 nT per axis, closed-form weighted least squares). The body is
-kept at its engine position (z = -0.5..0.5) with the sensor at z = 0 (see a02 docstring).
+Geometry, noise and solver as in a02 (4 x 4 x 1 m prism on the ground, sensor 0.5 m above the ground, 1 m
+standoff, 1 cm sampling, sigma_B = 0.50 nT per axis, closed-form weighted least squares). The body is at its
+engine position (z = -0.5..0.5) with the sensor at z = 0, as in a02.
 
 Parts
-  A. Rover-frame and world-frame DC offsets and drift, fitted as nuisance parameters.
-     Nuisance models: none | rover_dc (3 rover-frame offsets, rotated with heading) |
-     rover_world_dc (+3 world-frame offsets) | rover_world_dc_drift (+3 world-frame linear drifts).
-     Linearly dependent columns (e.g. rover and world offsets on a straight drive-by) are dropped.
-     A1  i.i.d. noise: the precision cost of fitting the nuisance terms.
-     A2  i.i.d. noise + an unknown constant rover-frame offset (5 nT) and world-frame offset (2 nT).
-     A3  correlated noise (a05 model: 0.05 nT white + OU, total 0.50 nT per axis) with L from
-         0.5 cm to 100 m and L = inf (a constant offset per survey).
-  B. Covariance scan: mean direction error over magnetization inclination/declination, sensor heights
-     0.25-1.5 m and standoffs 0.5-2 m (i.i.d. noise; sampled from the exact estimator covariance).
-  C. Buried extent: data from an outcrop that extends b metres below the surface, inverted with the
-     exposed-only (0..1 m) model.
+  A. Rover-frame and world-frame DC offsets and drift fitted as nuisance parameters. Models: none, rover_dc
+     (3 rover-frame offsets, rotated with heading), rover_world_dc (+3 world-frame offsets),
+     rover_world_dc_drift (+3 world-frame linear drifts). Linearly dependent columns are dropped.
+     A1  i.i.d. noise: precision lost by fitting the nuisance terms.
+     A2  i.i.d. noise plus an unknown constant rover-frame offset (5 nT) and world-frame offset (2 nT).
+     A3  correlated noise (a05 model: 0.05 nT white + OU, total 0.50 nT per axis), L = 0.5 cm to 100 m and
+         L = inf (a constant offset per survey).
+  B. Covariance scan: mean direction error over magnetization inclination and declination, sensor heights
+     0.25-1.5 m and standoffs 0.5-2 m (i.i.d. noise, sampled from the estimator covariance).
+  C. Buried extent: data from an outcrop extending b m below the surface, inverted with the exposed-only
+     (0..1 m) model.
   D. Internal heterogeneity: the prism split into 4 x 4 x 2 cells (1 x 1 x 0.5 m), each magnetized in a
-     Fisher-distributed direction about -z; recovered direction compared with the volume-mean vector
-     and with the Fisher mean direction.
-  G. A regional field gradient (fitted or not) and slow drift about a constant (L = 100 m OU),
-     with rover- and local-frame offsets fitted.
-  H. Local-frame offsets only fitted (direction scan), tolerance to an unfitted constant offset, and
-     buried extent down to 5 m.
+     Fisher-distributed direction about -z; the recovered direction is compared with the volume-mean vector
+     and the Fisher mean direction.
+  E. Along-track spacing 1-25 cm at fixed per-sample sigma and at fixed noise amplitude spectral density (ASD;
+     sigma scaled by sqrt(1 cm / spacing)): accuracy is set by the ASD, not the spacing.
+  F. Wavenumber band of the estimator weights, and a prediction of the correlated-noise errors from the ASD
+     in that band.
+  G. Regional field gradient (fitted or not) and slow drift about a constant (OU, L = 100 m), with rover- and
+     local-frame offsets fitted.
+  H. Local-frame offsets only fitted (direction scan), tolerance to an unfitted constant offset, and buried
+     extent down to 5 m.
   I. Survey designs (approach leg, second loop) that separate a fitted site-field offset from the outcrop.
-  F. Wavenumber band of the estimator weights, and a prediction of the correlated-noise errors from
-     the noise amplitude spectral density in that band.
-  E. Along-track spacing 1-25 cm at fixed per-sample sigma and at fixed noise amplitude spectral density
-     (sigma scaled by sqrt(1 cm / spacing), i.e. each sample averages the band-limited output), showing that accuracy is set by the ASD, not the spacing.
+  J. Figure 8 panel B at 500 inversions per point (the check in the Figure 8 caption): the G2 drift
+     requirement (drive-around, offsets fitted) rerun with n = 500, once with the random-number stream of G2
+     (seed label a06:G2) and once with an independent one (a06:G2N500), compared with the n = 300 points of G2.
 
-Run:  python analysis/a06_isolated_robustness.py [--parts ABCDEFGHI]
+Run:  python analysis/a06_isolated_robustness.py [--parts ABCDEFGHIJ]
 Out:  results/analysis/a06_isolated_robustness.json
 """
 import os, sys, json, time, argparse
@@ -43,15 +45,16 @@ import discretize
 import isolated_outcrop_1cm as ISO
 import correlated_noise_sensitivity as CN
 from inversion_helpers import (prism_cell_operator, _sim_for, dir_err_deg, seed_for,
-                               M_NRM_MIN, SIGMA_B, STANDOFF, PRISM_DIMS)
+                               M_NRM_MIN, SIGMA_B, STANDOFF, PRISM_DIMS, PAPER_SURVEYS, PAPER_SPACING)
 from core import generate_traverse
 
-SPACING = 0.01
-SURVEYS = {"drive_around": ("full_orbit", 5.0), "drive_by": ("drive_by", 6.0)}
+SPACING = PAPER_SPACING
+SURVEYS = PAPER_SURVEYS
 M_TRUE = M_NRM_MIN * np.array([0.0, 0.0, -1.0])
 BND = tuple(float(v) for v in ISO.bnd)
 L_GRID = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, np.inf]
 NUIS = ["none", "rover_dc", "rover_world_dc", "rover_world_dc_drift", "rover_dc_world_poly3", "rover_dc_world_poly9"]
+ALL_PARTS = "ABCDEFGHIJ"
 OUT = os.path.join(ROOT, "results", "analysis", "a06_isolated_robustness.json")
 
 
@@ -83,7 +86,7 @@ def headings(sxyz):
 
 
 def nuisance_columns(sxyz, model):
-    """(nD x q) station-major columns for DC offsets / drift in the given model."""
+    """Station-major (nD x q) columns for the DC offsets and drift of the given nuisance model."""
     n = len(sxyz)
     cols = []
     if model in ("rover_dc", "rover_world_dc", "rover_world_dc_drift"):
@@ -116,7 +119,7 @@ def nuisance_columns(sxyz, model):
 
 
 def augmented(G, N):
-    """Append nuisance columns that are not linearly dependent on what is already there."""
+    """Append the nuisance columns that are not linearly dependent on the columns already present."""
     A = G.copy()
     kept = 0
     for k in range(N.shape[1]):
@@ -143,11 +146,11 @@ def part_A(out):
             A, kept = augmented(G, nuisance_columns(sxyz, nm))
             ops[nm] = (A, lsK(A), kept)
             res[name].setdefault("n_nuisance_kept", {})[nm] = kept
-        # A1 iid
+        # A1: i.i.d. noise
         rng = np.random.default_rng(seed_for(f"a06:A1:{name}"))
         noise = rng.normal(0.0, SIGMA_B, size=(1000, d0.size))
         res[name]["A1_iid"] = {nm: metrics((d0[None] + noise) @ ops[nm][1][:3].T, M_TRUE) for nm in NUIS}
-        # A2 iid + unknown offsets (random directions, fixed amplitudes)
+        # A2: i.i.d. noise plus unknown offsets (random directions, fixed amplitudes)
         rng = np.random.default_rng(seed_for(f"a06:A2:{name}"))
         psi = headings(sxyz); c, s = np.cos(psi), np.sin(psi)
         n2 = 500
@@ -159,7 +162,7 @@ def part_A(out):
         off[:, :, 2] = br[:, [2]] + bw[:, [2]]
         D = d0[None] + off.reshape(n2, -1) + rng.normal(0.0, SIGMA_B, size=(n2, d0.size))
         res[name]["A2_offsets_5nT_rover_2nT_world"] = {nm: metrics(D @ ops[nm][1][:3].T, M_TRUE) for nm in NUIS}
-        # A3 correlated noise sweep
+        # A3: correlated noise
         res[name]["A3_correlated"] = []
         for L in L_GRID:
             rng = np.random.default_rng(seed_for(f"a06:A3:{name}:{L}"))
@@ -310,7 +313,7 @@ def part_D(out):
 
 
 def part_E(out):
-    """Same noise ASD at different along-track spacings -> same accuracy (sampling is not a requirement)."""
+    """Recovery at different along-track spacings with the same noise ASD."""
     res = {}
     for name in SURVEYS:
         res[name] = []
@@ -328,10 +331,9 @@ def part_E(out):
 
 
 def part_F(out):
-    """Wavenumber sensitivity of the estimator and an in-band-ASD prediction of the OU results.
-    For stationary noise with one-sided spatial PSD S(k) the estimator variance is
-    sum_k S(k) |K_hat(k)|^2; the band where |K_hat|^2 lives is the band where the noise matters.
-    Prediction: error(L) ~ error(white) * sqrt(S_OU(k_c; L) / S_white) at the band centre k_c."""
+    """Wavenumber sensitivity of the estimator, and a prediction of the OU-noise errors from the in-band ASD.
+    For stationary noise with one-sided spatial PSD S(k) the estimator variance is sum_k S(k) |K_hat(k)|^2.
+    Prediction: error(L) ~ error(white) * sqrt(S_OU(k_c; L) / S_white) at the band center k_c."""
     res = {}
     for name in SURVEYS:
         sx = survey(name)
@@ -361,8 +363,8 @@ def part_F(out):
 
 
 def gradient_basis(sxyz):
-    """Five station-major columns for a uniform, curl- and divergence-free field gradient
-    (symmetric traceless 3x3 tensor T; field b = T r about the survey centroid)."""
+    """Five station-major columns for a uniform field gradient (symmetric traceless 3x3 tensor T,
+    field b = T r about the survey centroid)."""
     r = sxyz - sxyz.mean(0)
     E = []
     for (i, j) in [(0, 1), (0, 2), (1, 2)]:
@@ -372,11 +374,37 @@ def gradient_basis(sxyz):
     return np.column_stack([(r @ T.T).reshape(-1) for T in E]), E
 
 
+DRIFT_SD_NT = [0.0, 0.02, 0.05, 0.1, 0.2, 0.5]
+
+
+def drift_rows(name, sxyz, d0, K_off, n, label, tag):
+    """Drift requirement (parts G2 and J): white 0.5 nT plus an OU drift (L = 100 m) of per-axis std sd, inverted
+    with rover- and local-frame offsets fitted (K_off), n inversions per point. The seed label is
+    f"a06:{label}:{name}:{sd}"."""
+    drows = []
+    for sd in DRIFT_SD_NT:
+        rng = np.random.default_rng(seed_for(f"a06:{label}:{name}:{sd}"))
+        nz = rng.normal(0.0, SIGMA_B, size=(n, d0.size))
+        if sd > 0:
+            ou = CN.make_noise(sxyz, 100.0, n, rng)          # total std SIGMA_TOT, mostly OU
+            nz = nz + ou * (sd / CN.SIGMA_TOT)
+        M = (d0[None] + nz) @ K_off[:3].T
+        r = {"drift_std_nT": sd, "offsets_fitted": metrics(M, M_TRUE)}
+        # rms of the drift about its per-survey mean
+        if sd > 0:
+            v = (ou * (sd / CN.SIGMA_TOT)).reshape(n, -1, 3)
+            r["rms_about_mean_nT"] = float(np.sqrt(np.mean((v - v.mean(1, keepdims=True)) ** 2)))
+        drows.append(r)
+        print(f"[{tag} {name}] drift std {sd}: {r['offsets_fitted']['dir_err_deg']['mean']:.1f} deg"
+              + (f" (rms about mean {r['rms_about_mean_nT']:.3f} nT)" if sd > 0 else ""), flush=True)
+    return drows
+
+
 def part_G(out):
     """G1: a regional field gradient (uniform tensor, Frobenius norm g in nT/m) added to the data, inverted
-    with offsets fitted, with and without the five gradient terms also fitted.
-    G2: slow drift about a constant: OU with L = 100 m and per-axis std s added on top of the white 0.5 nT,
-    inverted with offsets fitted; find s that keeps the mean direction error at 5 deg."""
+    with offsets fitted, with and without the five gradient terms fitted.
+    G2: slow drift about a constant (OU, L = 100 m, per-axis std s) added to the white 0.5 nT, inverted with
+    offsets fitted; s that gives a mean direction error of 5 deg."""
     res = {}
     for name in SURVEYS:
         sxyz = survey(name)
@@ -400,32 +428,16 @@ def part_G(out):
             print(f"[G1 {name}] g={g}: offsets only {r['offsets_fitted']['dir_err_deg']['mean']:.1f} deg; "
                   f"+gradient {r['offsets_and_gradient_fitted']['dir_err_deg']['mean']:.1f} deg "
                   f"(|dM| {r['offsets_and_gradient_fitted']['dM_abs_pct']['median']:.1f}%)", flush=True)
-        # drift requirement
-        drows = []
-        for sd in [0.0, 0.02, 0.05, 0.1, 0.2, 0.5]:
-            rng = np.random.default_rng(seed_for(f"a06:G2:{name}:{sd}"))
-            n = 300
-            nz = rng.normal(0.0, SIGMA_B, size=(n, d0.size))
-            if sd > 0:
-                ou = CN.make_noise(sxyz, 100.0, n, rng)          # total std SIGMA_TOT, mostly OU
-                nz = nz + ou * (sd / CN.SIGMA_TOT)
-            M = (d0[None] + nz) @ K_off[:3].T
-            r = {"drift_std_nT": sd, "offsets_fitted": metrics(M, M_TRUE)}
-            # rms of the drift about its per-survey mean (what fitting cannot remove)
-            if sd > 0:
-                v = (ou * (sd / CN.SIGMA_TOT)).reshape(n, -1, 3)
-                r["rms_about_mean_nT"] = float(np.sqrt(np.mean((v - v.mean(1, keepdims=True)) ** 2)))
-            drows.append(r)
-            print(f"[G2 {name}] drift std {sd}: {r['offsets_fitted']['dir_err_deg']['mean']:.1f} deg"
-                  + (f" (rms about mean {r['rms_about_mean_nT']:.3f} nT)" if sd > 0 else ""), flush=True)
+        # G2: drift requirement
+        drows = drift_rows(name, sxyz, d0, K_off, n=300, label="G2", tag="G2")
         res[name] = {"n_gradient_terms_kept": kept_g, "gradient": rows, "drift_L100m": drows}
     out["G_gradient_and_drift"] = res
 
 
 def part_H(out):
-    """H1: local-frame (world) offsets only fitted (the static site field cannot be removed by the lander, so it
-    must be fitted; a rover-frame offset can be calibrated by rotating the rover), scanned over 42 directions.
-    H2: tolerance to an UNFITTED constant offset (local frame, random direction) of amplitude c.
+    """H1: only local-frame (world) offsets fitted, scanned over 42 directions. The static site field cannot be
+    removed using the lander and must be fitted; a rover-frame offset can be calibrated by rotating the rover.
+    H2: tolerance to an unfitted constant offset (local frame, random direction) of amplitude c.
     H3: deeper buried extent (b up to 5 m), three magnetization directions, drive-around only."""
     res = {}
     for name in SURVEYS:
@@ -449,7 +461,7 @@ def part_H(out):
             rows.append(m)
             print(f"[H2 {name}] unfitted constant offset {c} nT: {m['dir_err_deg']['mean']:.1f} deg, |dM| {m['dM_abs_pct']['median']:.1f}%", flush=True)
         res[name] = {"H1_world_offsets_fitted": r, "H2_unfitted_offset": rows}
-    # H3 deeper burial (drive-around)
+    # H3: deeper burial (drive-around)
     sxyz = survey("drive_around")
     Gi = prism_cell_operator(BND, sxyz); K = lsK(Gi)
     dirs = {"-z": np.array([0, 0, -1.0]), "+x": np.array([1.0, 0, 0]), "inc45": np.array([0.7071, 0, -0.7071])}
@@ -469,9 +481,9 @@ def part_H(out):
 
 
 def part_I(out):
-    """Survey designs that separate a constant site field (local-frame offset, which must be fitted because the
+    """Survey designs that separate a constant site field (a local-frame offset, which must be fitted because the
     lander cannot remove the static crustal field at the rover) from the outcrop field. Drive-around loop at 1 m
-    plus: nothing / a 10 m straight approach leg / a second loop at 3 m standoff. Direction scan over 42
+    alone, with a 10 m straight approach leg, or with a second loop at 3 m standoff. Direction scan over 42
     directions with local-frame offsets fitted, and with offsets plus the five gradient terms fitted."""
     loop1 = survey("drive_around")
     loop3 = survey("drive_around", standoff=3.0)
@@ -497,15 +509,46 @@ def part_I(out):
     out["I_survey_designs_for_offsets"] = res
 
 
+def part_J(out):
+    """Figure 8 panel B at 500 inversions per point (drive-around, offsets fitted), the check quoted in the
+    figure caption. Survey, operator and noise model as in G2 (n = 300, stored in G_gradient_and_drift), with
+    n = 500 and either the G2 seed label (same_seed) or the independent label a06:G2N500 (independent_seed).
+    The result is the mean direction error at each drift level, to compare with the stored n = 300 points."""
+    name = "drive_around"
+    sxyz = survey(name)
+    G = prism_cell_operator(BND, sxyz)
+    d0 = G @ M_TRUE
+    A_off, _ = augmented(G, nuisance_columns(sxyz, "rover_world_dc"))
+    K_off = lsK(A_off)
+    if "G_gradient_and_drift" in out:
+        n300 = out["G_gradient_and_drift"][name]["drift_L100m"]
+    else:
+        n300 = json.load(open(OUT))["G_gradient_and_drift"][name]["drift_L100m"]
+    runs = {"same_seed": drift_rows(name, sxyz, d0, K_off, n=500, label="G2", tag="J same_seed"),
+            "independent_seed": drift_rows(name, sxyz, d0, K_off, n=500, label="G2N500", tag="J independent_seed")}
+    cmp = {"drift_std_nT": DRIFT_SD_NT,
+           "rms_about_mean_nT": [r.get("rms_about_mean_nT", 0.0) for r in runs["independent_seed"]],
+           "N300_mean_dir_err_deg": [r["offsets_fitted"]["dir_err_deg"]["mean"] for r in n300]}
+    for k, rows in runs.items():
+        cmp[f"N500_{k}_mean_dir_err_deg"] = [r["offsets_fitted"]["dir_err_deg"]["mean"] for r in rows]
+        cmp[f"{k}_diff_deg"] = [a - b for a, b in zip(cmp[f"N500_{k}_mean_dir_err_deg"], cmp["N300_mean_dir_err_deg"])]
+        cmp[f"{k}_max_abs_diff_deg"] = max(abs(v) for v in cmp[f"{k}_diff_deg"])
+    out["J_fig8_n500_check"] = {"N": 500, "survey": name,
+                                "seed_labels": {"same_seed": "a06:G2:<survey>:<sd>", "independent_seed": "a06:G2N500:<survey>:<sd>"},
+                                "runs": runs, "comparison_with_N300": cmp}
+    print(f"[J] max |mean direction error difference| vs N = 300: same seed {cmp['same_seed_max_abs_diff_deg']:.2f} deg, "
+          f"independent seed {cmp['independent_seed_max_abs_diff_deg']:.2f} deg", flush=True)
+
+
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--parts", default="ABCDEFGHI"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--parts", default=ALL_PARTS); a = ap.parse_args()
     t0 = time.time()
-    # rerunning some parts only (--parts): keep the stored results of the others
-    out = json.load(open(OUT)) if a.parts != "ABCDEFGHI" and os.path.exists(OUT) else {}
+    # With --parts, keep the stored results of the other parts
+    out = json.load(open(OUT)) if a.parts != ALL_PARTS and os.path.exists(OUT) else {}
     out["meta"] = dict(script="analysis/a06_isolated_robustness.py", sigma_B_nT=SIGMA_B, spacing_m=SPACING,
                        M_true_Am=M_TRUE.tolist(), geometry="as a02", L_grid=[("inf" if np.isinf(L) else L) for L in L_GRID])
     for p in a.parts:
-        {"A": part_A, "B": part_B, "C": part_C, "D": part_D, "E": part_E, "F": part_F, "G": part_G, "H": part_H, "I": part_I}[p](out)
+        {"A": part_A, "B": part_B, "C": part_C, "D": part_D, "E": part_E, "F": part_F, "G": part_G, "H": part_H, "I": part_I, "J": part_J}[p](out)
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         json.dump(out, open(OUT, "w"), indent=1)
         print(f"part {p} done ({time.time()-t0:.0f} s)", flush=True)

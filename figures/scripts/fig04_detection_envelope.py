@@ -1,6 +1,6 @@
 """Figure 4 - Isolated-outcrop recovery versus normalized field strength (drive-around).
 
-Data: results/analysis/a02b_detection_sweep_N1000.json, "detection_sweep" -> drive_around.
+Data: results/analysis/a02b_detection_sweep_N1000.json, "detection_sweep", drive_around.
 Each point is the median of 1000 inversions; the 1x point is the Section 4.2 baseline (K = 1, 1 cm sampling, sigma_B = 0.50 nT per axis).
 Orange: median direction error (left axis). Blue: median absolute intensity error |dM| (right, log).
 Shaded: B_NRM >= B_ref.

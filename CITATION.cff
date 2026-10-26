@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this code, please cite the paper and this software."
+message: "If you use this code, please cite the paper."
 title: "Lunar Rover Magnetometry: reproduction code"
 type: software
 authors:
@@ -12,8 +12,8 @@ authors:
   - family-names: Hoffman
     given-names: Jeffrey A.
 license: MIT
-version: "1.0.0"
-date-released: "2026-10-05"
+version: "1.0.1"
+date-released: "2026-10-26"
 keywords:
   - lunar paleomagnetism
   - rover magnetometry
@@ -33,4 +33,3 @@ preferred-citation:
       given-names: Jeffrey A.
   journal: "The Planetary Science Journal"
   year: 2026
-  notes: "In preparation. Update with volume, article number and DOI on publication."

@@ -1,9 +1,9 @@
 """a09 - Isolated outcrop: systematic errors and combined error budgets (paper Sections 4.2 and 5.1-5.5, Table 5).
 
-Same geometry, noise and solver as a02/a06 (prism 4 x 4 x 1 m, body z = -0.5..0.5, sensor at z = 0, i.e. 0.5 m above
+Geometry, noise and solver as in a02/a06 (4 x 4 x 1 m prism, body z = -0.5..0.5, sensor at z = 0, i.e. 0.5 m above
 the ground, 1 m standoff, 1 cm sampling, sigma_B = 0.50 nT per axis, closed-form weighted least squares). The
-recommended survey is the drive-around at 1 m plus a second loop at 3 m, with local-frame (site-field) offsets and a
-uniform gradient (5 terms) fitted.
+survey is the drive-around at 1 m plus a second loop at 3 m, with local-frame (site-field) offsets and a uniform
+gradient (5 terms) fitted.
 
 Parts (run with --parts, one character each; results merge into results/analysis/a09_systematics.json)
   J  constant sensor tilt in a static ambient field (30 and 300 nT), loops centred.
@@ -38,7 +38,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-import a06_isolated_robustness as A6                       # chdirs into engine/ and sets sys.path
+import a06_isolated_robustness as A6                       # changes directory to engine/ and sets sys.path
 import discretize
 import isolated_outcrop_1cm as ISO
 import correlated_noise_sensitivity as CN
@@ -155,7 +155,7 @@ def part_K(out):
                         b, _ = dipole_field(sx, B0, R, rng)
                         d = d0 + b + rng.normal(0, SIGMA_B, d0.size)
                         Mg[i] = Kg @ d; M0[i] = K0 @ d
-                        if dn == "-z":   # residual after the best offsets + gradient fit (curvature and higher)
+                        if dn == "-z":   # residual after the offsets and gradient fit
                             Bg = A6.gradient_basis(sx)[0]
                             N = np.column_stack([A6.nuisance_columns(sx, "world_dc"), Bg])
                             cf, *_ = np.linalg.lstsq(N, b, rcond=None)
@@ -207,7 +207,7 @@ def part_M(out):
                              "dir_err_deg": A6.stats(th)})
                 print(f"[M depth {depth} {block}] floor {floor}: sd {np.mean(sd):.3f} Mref, bg/signal {np.mean(ratio):.2f}, "
                       f"dir mean {th.mean():.1f} deg", flush=True)
-            # interpolate the SD at which the mean error crosses 5 deg
+            # SD at which the mean error crosses 5 deg (interpolated)
             e = np.array([r["dir_err_deg"]["mean"] for r in rows]); s = np.array([r["cell_sd_over_Mref"] for r in rows])
             idx = np.where((e[:-1] < 5) & (e[1:] >= 5))[0]
             x = float(s[idx[0]] + (5 - e[idx[0]]) * (s[idx[0] + 1] - s[idx[0]]) / (e[idx[0] + 1] - e[idx[0]])) if len(idx) else None
@@ -269,7 +269,7 @@ def budget(out, key, dx, R_site, pose, bmax, drift_rms, tilt_nT, chi, chi_err, n
             Gt = prism_cell_operator((BND[0], BND[1], BND[2], BND[3], BND[4] - b, BND[5]), sx)
             pdg, trans = generate_pose_errors(randomize=True, pointing_err_max_deg=(pose[0], pose[0]), range_err_max_m=pose[1])
             Gm = warped_operator(sx, ISO.imager_R(pdg), np.asarray(trans, float))
-            if root > 0:          # buried part fitted as a separate body with its own magnetization, same imaged pose
+            if root > 0:          # buried part fitted as a separate body with its own magnetization
                 Rm, Tm = ISO.imager_R(pdg), np.asarray(trans, float)
                 Aq = ISO.per_receiver_kernel((BND[0], BND[1], BND[2], BND[3], BND[4] - root, BND[4]), (sx - Tm) @ Rm)
                 Gm = np.column_stack([Gm, np.einsum("ij,rjk,lk->ril", Rm, Aq, Rm).reshape(-1, 3)])
@@ -298,7 +298,7 @@ CHI = 2e-3     # SI volume susceptibility of mare basalt, order of magnitude (Ro
 
 
 def part_U(out):
-    """Every source at its stated tolerance: loops 0.5 m off centre, site-field residual ~0.02 nT (100 nT from 530 m),
+    """Every source at its tolerance: loops 0.5 m off centre, site-field residual ~0.02 nT (100 nT from 530 m),
     pose 3 deg / 0.15 m, b <= 1 m, drift 0.03 nT rms, tilt*|B| = 0.05 nT, induced magnetization removed with chi known
     to a factor of 2."""
     budget(out, "U_budget_full_offcentre", 0.5, 530.0, (3.0, 0.15), 1.0, 0.03, 0.05, CHI, np.log(2.0))
@@ -515,7 +515,7 @@ DIRS6 = dict(DIRS, **{"+y": np.array([0, 1.0, 0]), "inc45y": np.array([0, 0.7071
 
 
 def part_REQ(out):
-    """The requirement set of the Conclusions run together, six magnetization directions:
+    """The requirement set of the Conclusions, six magnetization directions:
     loops 0.1 m off centre with the buried extent unknown up to 0.5 m (a) or 1 m (b); loops 0.5 m off centre with the
     buried extent known (c). Site residual ~0.02 nT (100 nT from 530 m), pose +-1.5 deg / +-0.075 m, drift 0.01 nT rms,
     tilt*|B| 0.05 nT, chi known to a factor of 1.4."""
@@ -557,9 +557,9 @@ def _req_full(out, key, dx, bmax):
 
 
 def part_REQF_a(out):
-    """Requirement set as part q, but with the two mitigations the text recommends: each loop driven twice in opposite
-    directions (doubles the survey time) and the six heading-dependent tilt terms fitted. Case a: loops 0.1 m off
-    centre, buried extent up to 0.5 m."""
+    """Requirement set as part q, with two mitigations: each loop driven twice in opposite directions (doubling the
+    survey time) and the six heading-dependent tilt terms fitted. Case a: loops 0.1 m off centre, buried extent
+    up to 0.5 m."""
     _req_full(out, "REQF_a_dx0.1_b0.5", 0.1, 0.5)
 
 
@@ -589,7 +589,7 @@ def part_REQF_chi5_c(out):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--parts", default="JTtKM2NWUVYXGZqSRDdErfghij"); a = ap.parse_args()
     t0 = time.time()
-    # rerunning some parts only (--parts): keep the stored results of the others
+    # With --parts, keep the stored results of the other parts
     out = json.load(open(OUT)) if a.parts != "JTtKM2NWUVYXGZqSRDdErfghij" and os.path.exists(OUT) else {}
     out["meta"] = dict(script="analysis/a09_systematics.py", sigma_B_nT=SIGMA_B, geometry="as a02/a06",
                        survey="drive-around at 1 m + second loop at 3 m; M uses the single loop at 5 cm with the noise scaled to the same ASD")

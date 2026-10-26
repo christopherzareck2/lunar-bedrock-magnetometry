@@ -4,7 +4,7 @@
     generate_rille_traverse            straight traverse along a wall
     create_shape_mask                  cells inside a rect, cylinder, sphere, hemisphere or pyramid
     MagnetizedShapes, MagnetizedBlocks SimPEG maps from a few uniform bodies to a vector model
-    generate_pose_errors,     rigid mis-pose of the imaged outcrop (pointing and range errors)
+    generate_pose_errors,              rigid mis-pose of the imaged outcrop (pointing and range errors)
     pose_transform
 """
 import numpy as np
@@ -18,14 +18,12 @@ POSE_POINTING_DEG = (0.0, 0.0)
 POSE_TRANS_M = (0.0, 0.0, 0.0)
 
 
-# ============================================================
-# --- Survey & Synthetic Data ---
-# ============================================================
+# Survey paths
 
 def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
                       orbit_offset=1.0, approach_distance=5.0, shape='rect'):
     """
-    Generate survey_xyz for a selected traverse type around the configured outcrop.
+    Return survey points (x, y, z) for a traverse of the given type around the outcrop.
 
     Parameters
     ----------
@@ -50,11 +48,11 @@ def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
         Survey points in the same frame as (cx, cy).
     """
 
-    # --- Extract outcrop center (XY) ---
+    # Outcrop center (XY)
     cx = shape_params.get("cx", 0.0)
     cy = shape_params.get("cy", 0.0)
 
-    # --- Compute effective bounding radius (largest XY extent) ---
+    # Bounding radius (largest XY extent)
     if shape == "rect":
         bounding_radius = max(shape_params["sx"], shape_params["sy"]) / 2.0
     elif shape in ["cylinder_z", "sphere", "hemisphere_z+"]:
@@ -62,10 +60,9 @@ def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
     elif shape == "pyramid_z+":
         bounding_radius = shape_params["a"] / np.sqrt(2.0)  # center -> corner distance
     else:
-        # Fallback: try sx/sy if present, otherwise default.
+        # Fallback: sx if present, otherwise a 1 m wide outcrop.
         bounding_radius = shape_params.get("sx", 1.0) / 2.0
 
-    # --- TRAVERSE TYPES ---
     if traverse_type == "drive_by":
         # Straight line parallel to x-axis, offset in -y from outcrop edge.
         left_edge_x = cx - bounding_radius
@@ -94,7 +91,7 @@ def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
         x3 = np.linspace(orbit_distance, -orbit_distance, n_per_side)
         y3 = np.full_like(x3, orbit_distance)
 
-        # Drop the last point to avoid duplicating the starting corner when concatenating.
+        # Drop the last point so the starting corner is not repeated.
         x4 = np.full(n_per_side - 1, -orbit_distance)
         y4 = np.linspace(orbit_distance, -orbit_distance, n_per_side)[:-1]
 
@@ -175,8 +172,7 @@ def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
         traverse_xy = np.vstack([approach_xy, square_path_xy]) if square_path_xy.size else approach_xy.copy()
 
     elif traverse_type == "skate_park":
-        # Square trajectory around primary outcrop.
-        # Other outcrops (1m/3m/10m) are created elsewhere; not included in path.
+        # Square trajectory around the primary outcrop (other outcrops are not included in the path).
         orbit_distance = bounding_radius + orbit_offset
         side_length = 2.0 * orbit_distance
         n_per_side = max(10, int(np.ceil(side_length / spacing)))
@@ -204,7 +200,7 @@ def generate_traverse(traverse_type, shape_params, sensor_height=0.5, spacing=1,
             "Options: 'drive_by', 'full_orbit', 'half_orbit', 'approach_square', 'skate_park'"
         )
 
-    # --- Add elevation (constant z) ---
+    # Constant sensor height
     traverse_z = np.full(traverse_xy.shape[0], sensor_height)
     survey_xyz = np.column_stack([traverse_xy, traverse_z])
 
@@ -217,13 +213,11 @@ def generate_rille_traverse(xmin, xmax, y, z_sensor, spacing):
     return np.column_stack([x, np.full_like(x, y), np.full_like(x, z_sensor)])
 
 
-# ============================================================
-# --- Forward Modeling ---
-# ============================================================
+# Forward modeling
 
 def create_shape_mask(x, y, z, cx, cy, cz, shape, shape_params, margin_frac=0.0, margin_z=0.0):
     """
-    Return a boolean mask of mesh cell-centers that lie inside a specified shape.
+    Return a boolean mask of mesh cell centers that lie inside the given shape.
 
     Inputs
     ------
@@ -327,14 +321,12 @@ def create_shape_mask(x, y, z, cx, cy, cz, shape, shape_params, margin_frac=0.0,
         raise ValueError(f"Unknown SHAPE: '{shape}'")
 
 
-# ============================================================
-# --- Inversion ---
-# ============================================================
+# Inversion
 
 
 class MagnetizedShapes(maps.IdentityMap):
     """
-    Shape-aware parametric mapping for a uniformly magnetized body.
+    SimPEG parametric mapping for a uniformly magnetized body of a given shape.
 
     Supported shapes and parameter vectors
     --------------------------------------
@@ -387,12 +379,12 @@ class MagnetizedShapes(maps.IdentityMap):
         super().__init__(nP=nP)
 
     def _active_centers(self):
-        """Convenience: active cell centers as (nC_active, 3)."""
+        """Active cell centers, shape (nC_active, 3)."""
         return self._mesh_ref.cell_centers[self.active_cells]
 
     def _inside_mask(self, params):
         """
-        Compute boolean mask (length nC_active) for active cells inside the shape.
+        Boolean mask (length nC_active) of active cells inside the shape.
 
         Notes
         -----
@@ -451,7 +443,7 @@ class MagnetizedShapes(maps.IdentityMap):
 
     def _transform(self, m):
         """
-        Convert shape parameters -> flattened active-cell vector magnetization model.
+        Convert shape parameters to a flattened vector magnetization model on the active cells.
 
         Parameters
         ----------
@@ -467,10 +459,10 @@ class MagnetizedShapes(maps.IdentityMap):
         m = np.asarray(m, dtype=float)
         inside = self._inside_mask(m)
 
-        # Allocate active-cell magnetization (uniform inside, 0 outside)
+        # Magnetization on active cells (uniform inside, 0 outside)
         M = np.zeros((self.nC_active, 3), dtype=float)
 
-        # Extract magnetization components from the tail of the parameter vector
+        # Magnetization components are the last three parameters
         if self.geom_shape == "rect":
             mx, my, mz = m[6:9]
         elif self.geom_shape == "cylinder_z":
@@ -484,18 +476,13 @@ class MagnetizedShapes(maps.IdentityMap):
 
         M[inside, :] = (mx, my, mz)
 
-        # SimPEG "vector model" convention: stack components
+        # SimPEG vector-model convention: stack components
         return np.concatenate([M[:, 0], M[:, 1], M[:, 2]])
 
     def _deriv_matrix(self, m):
         """
-        Jacobian for magnetization parameters only (mx,my,mz), with geometry frozen.
-
-        This is intentionally a sparse matrix of shape:
-            (3*nC_active, nP)
-
-        The geometry parameters are treated as constant here; their derivatives
-        are not included.
+        Sparse Jacobian, shape (3*nC_active, nP), with respect to the magnetization
+        parameters (mx, my, mz) only; the geometry parameters are held fixed.
         """
         m = np.asarray(m, dtype=float)
         inside = self._inside_mask(m)
@@ -503,7 +490,7 @@ class MagnetizedShapes(maps.IdentityMap):
         n_out = 3 * self.nC_active
         J = scipy.sparse.lil_matrix((n_out, self.nP), dtype=float)
 
-        # Where do (mx,my,mz) start in the parameter vector?
+        # Index of mx in the parameter vector
         if self.geom_shape == "rect":
             mag_idx = 6
         elif self.geom_shape == "cylinder_z":
@@ -524,20 +511,16 @@ class MagnetizedShapes(maps.IdentityMap):
         return J.tocsr()
 
     def deriv(self, m, v=None):
-        """
-        SimPEG API: return J or J@v if a vector v is provided.
-        """
+        """Return J, or J @ v if v is given (SimPEG interface)."""
         J = self._deriv_matrix(m)
         return J @ v if v is not None else J
 
 
 class MagnetizedBlocks(maps.IdentityMap):
     """
-    Parametric mapping that defines one or more magnetized rectangular blocks
-    on a given mesh. Each block has 9 parameters:
-        [x1, y1, z1, x2, y2, z2, mx, my, mz]
-    The mapping converts these block parameters into a full 3-component
-    magnetization vector on the active mesh cells.
+    Parametric mapping for one or more uniformly magnetized rectangular blocks.
+    Each block has 9 parameters, [x1, y1, z1, x2, y2, z2, mx, my, mz]; the map gives
+    the 3-component magnetization on the active mesh cells.
     """
 
     def __init__(self, mesh, n_blocks=1, active_cells=None):
@@ -545,7 +528,7 @@ class MagnetizedBlocks(maps.IdentityMap):
         self._mesh_ref = mesh
         self.n_blocks = n_blocks
 
-        # Handle active region (exclude air if mask provided)
+        # Active region (excludes air if a mask is given)
         if active_cells is None:
             self.active_cells = np.ones(mesh.nC, dtype=bool)
         else:
@@ -555,13 +538,8 @@ class MagnetizedBlocks(maps.IdentityMap):
         nP = n_blocks * 9  # 6 geom + 3 magnetization params per block
         super().__init__(nP=nP)
 
-    # ------------------------------------------------------------------
-    # Forward transform: parameters → full magnetization vector
-    # ------------------------------------------------------------------
     def _transform(self, m):
-        """
-        Convert parametric block parameters into (nC_active * 3,) magnetization.
-        """
+        """Convert block parameters to the (3*nC_active,) magnetization vector."""
         m = np.asarray(m, dtype=float)
         M = np.zeros((self.nC_active, 3))
         centers = self._mesh_ref.cell_centers[self.active_cells]
@@ -571,7 +549,7 @@ class MagnetizedBlocks(maps.IdentityMap):
             if base + 9 > len(m):
                 break
 
-            # Unpack block params
+            # Block parameters
             x1, y1, z1, x2, y2, z2, mx, my, mz = m[base:base + 9]
             x_min, x_max = sorted([x1, x2])
             y_min, y_max = sorted([y1, y2])
@@ -583,22 +561,18 @@ class MagnetizedBlocks(maps.IdentityMap):
                 (centers[:, 2] >= z_min) & (centers[:, 2] <= z_max)
             )
 
-            # Assign uniform magnetization within this block
+            # Uniform magnetization within the block
             M[inside, 0] = mx
             M[inside, 1] = my
             M[inside, 2] = mz
 
-        # Return in SimPEG vector format (x-block, y-block, z-block)
+        # SimPEG vector format (x block, y block, z block)
         return np.concatenate([M[:, 0], M[:, 1], M[:, 2]])
 
-    # ------------------------------------------------------------------
-    # Jacobian (derivative) approximation — magnetization terms only
-    # ------------------------------------------------------------------
     def _deriv_matrix(self, m):
         """
-        Sparse Jacobian approximation for derivative of mapping.
-        Only magnetization parameters (mx,my,mz) have direct derivatives of 1
-        inside each block. Geometry derivatives are set to zero for now.
+        Sparse Jacobian with respect to the magnetization parameters (mx, my, mz), which
+        enter linearly inside each block. Derivatives with respect to block geometry are zero.
         """
         n_out = self.nC_active * 3
         nP = self.n_blocks * 9
@@ -622,11 +596,11 @@ class MagnetizedBlocks(maps.IdentityMap):
             )
             idx = np.where(inside)[0]
 
-            # Fill magnetization derivatives (geometry derivatives omitted)
+            # Magnetization derivatives
             for cell in idx:
-                J[cell, base + 6] = 1.0               # ∂Mx/∂mx
-                J[cell + self.nC_active, base + 7] = 1.0  # ∂My/∂my
-                J[cell + 2*self.nC_active, base + 8] = 1.0  # ∂Mz/∂mz
+                J[cell, base + 6] = 1.0               # dMx/dmx
+                J[cell + self.nC_active, base + 7] = 1.0  # dMy/dmy
+                J[cell + 2*self.nC_active, base + 8] = 1.0  # dMz/dmz
 
         return J.tocsr()
 
@@ -639,7 +613,7 @@ def generate_pose_errors(randomize=False,
                                   pointing_err_max_deg=(1, 1),
                                   range_err_max_m=0.01):
     """
-    Generate a single realization of the imaging pose error.
+    Draw one realization of the imaging pose error.
 
     Parameters
     ----------
@@ -694,7 +668,7 @@ def generate_pose_errors(randomize=False,
 
 def pose_transform(vertices, pointing_deg=POSE_POINTING_DEG, trans=POSE_TRANS_M):
     """
-    Apply a rigid transform that approximates imaging registration errors.
+    Apply a rigid transform (imaging registration error) to a set of vertices.
 
     The transform is:
         v' = R * v + T
@@ -708,12 +682,10 @@ def pose_transform(vertices, pointing_deg=POSE_POINTING_DEG, trans=POSE_TRANS_M)
     vertices : ndarray, shape (N, 3)
         Input vertex coordinates.
     pointing_deg : tuple[float, float], optional
-        (az_deg, el_deg) rotation angles in degrees. Defaults to the module-level
-        ``POSE_POINTING_DEG`` (no-op). Pass an explicit realization from
-        ``generate_pose_errors`` to apply non-trivial pointing error.
+        (az_deg, el_deg) rotation angles in degrees. Defaults to ``POSE_POINTING_DEG`` (no rotation);
+        pass a realization from ``generate_pose_errors`` to apply a pointing error.
     trans : tuple[float, float, float], optional
-        Translation (tx, ty, tz) in meters. Defaults to the module-level
-        ``POSE_TRANS_M`` (no-op).
+        Translation (tx, ty, tz) in meters. Defaults to ``POSE_TRANS_M`` (no translation).
 
     Returns
     -------

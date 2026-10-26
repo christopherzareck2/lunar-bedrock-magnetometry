@@ -1,18 +1,16 @@
-"""a03 - Three-layer wall: is the middle flow's poor single-traverse recovery a direction effect or a
-distance effect?
+"""a03 - Three-layer wall: dependence of the middle flow's single-traverse recovery on its magnetization
+direction and on its distance from the traverse.
 
-Same wall, traverse, noise and solver as Table 4's single ground traverse (engine/three_layer_wall.py,
-arm A): flows x -50..50, y 0..50, z 0-5/5-10/10-15 m; traverse y = -1 m, z = 0.5 m, x = -120..+120 m,
-1 cm sampling; sigma_B = 0.50 nT; K = 3 closed-form (undamped) weighted least squares, as in the first
-columns of Table 4 (3.7/28.1/33.4 deg for the baseline case).
-N = 500 inversions per case, identical noise draws across cases. Result: the middle flow's error (~30 deg)
-does not depend on its magnetization direction; it is set by its distance from the traverse.
+Wall, traverse, noise and solver as for the single ground traverse of Table 4 (engine/three_layer_wall.py,
+arm A): flows x = -50..50, y = 0..50, z = 0-5/5-10/10-15 m; traverse y = -1 m, z = 0.5 m, x = -120..120 m,
+1 cm sampling; sigma_B = 0.50 nT; K = 3 closed-form (undamped) weighted least squares. N = 500 inversions
+per case with the same noise draws for every case.
 
-Cases (unit directions, |M| = 2.4e-3 A/m for every flow):
+Cases (|M| = 2.4e-3 A/m for every flow):
   T0  baseline           L1 -z, L2 +y, L3 +z
   T1  middle along x     L1 -z, L2 +x, L3 +z
   T2  middle vertical    L1 -z, L2 -z, L3 +z
-  T3  swap L1/L2 dirs    L1 +y, L2 -z, L3 +z   (puts the horizontal-into-wall vector on the nearest flow)
+  T3  swap L1/L2         L1 +y, L2 -z, L3 +z   (the horizontal vector is on the nearest flow)
 
 Run:  python analysis/a03_three_layer_direction_vs_distance.py
 Out:  results/analysis/a03_three_layer_direction_vs_distance.json

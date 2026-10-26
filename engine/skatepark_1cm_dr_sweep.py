@@ -1,20 +1,15 @@
 """Skate park: the isolated outcrop with four magnetized neighbors (paper Section 4.3, Figures 2 and 6).
 
-Scene: the 4 x 4 x 1 m central prism of Section 4.2 plus four neighbors placed a distance
-Delta_r beyond the rover traverse: a cylinder (north), a hemisphere (east), a pyramid (south)
-and a sphere (west), sized as fixed fractions of the central volume. All bodies carry
-|M| = 2.4e-3 A/m. Case A: every body magnetized along -z. Case B: the east and west neighbors
-reversed (+z).
+Scene: the 4 x 4 x 1 m central prism of Section 4.2 plus four neighbors (cylinder north, hemisphere
+east, pyramid south, sphere west) a distance Delta_r beyond the rover traverse, each a fixed fraction
+of the central volume. All bodies have |M| = 2.4e-3 A/m. Case A: all bodies magnetized along -z.
+Case B: east and west neighbors reversed (+z).
 
-Survey: square traverse at 1 m standoff from the central prism, sensor at z = 0.5 m (the bodies
-stand on z = 0), 1 cm sampling, three-component receivers, sigma_B = 0.50 nT per axis.
-
-Forward model: SimPEG integral-equation simulation (Choclo engine) on a 0.25 m tensor mesh
-containing all five bodies. Inversion: parametric single-body solve for the central prism only
-(geometry fixed, Mx/My/Mz free). With the geometry fixed the problem is linear, so the converged
-iterative solution (MagnetizedShapesRect + ProjectedGNCG) equals the closed-form weighted
-least-squares solution; the script checks this once and then uses the closed-form solve for
-N = 250 noise realizations at each Delta_r in 1..10 m.
+Survey: square traverse at 1 m standoff, sensor at z = 0.5 m, 1 cm sampling, sigma_B = 0.50 nT per axis.
+Forward model: SimPEG integral-equation simulation (Choclo engine) on a 0.25 m tensor mesh. Inversion:
+magnetization of the central prism only, with its geometry fixed. The problem is then linear, so the
+script checks once that the iterative solution (ProjectedGNCG) matches the closed-form weighted least
+squares and uses the closed form for N = 250 noise realizations at each Delta_r = 1..10 m.
 
 Run:  python engine/skatepark_1cm_dr_sweep.py
 Out:  results/engine/skatepark_1cm_dr_sweep_results.json
@@ -32,13 +27,15 @@ from simpeg import (maps, data, data_misfit, directives, inverse_problem,
                     optimization, inversion, regularization, utils)
 from simpeg.potential_fields import magnetics as mag
 
+from noise_budget import ROVER_ADOPTED_NT   # Table 1 (engine/noise_budget.py)
+
 # --------------------------------------------------------------------------- #
-# 1) Scene constants
+# Scene constants
 # --------------------------------------------------------------------------- #
 SHAPE = "rect"
 SHAPE_RADIUS = 2.0
 SHAPE_HEIGHT = 1.0
-outcrop_width = 2.0 * SHAPE_RADIUS            # = 4.0 m full width
+outcrop_width = 2.0 * SHAPE_RADIUS            # 4.0 m full width
 ROVER_HEIGHT = 0.5
 TRAVERSE_OFFSET = 1.0
 SP_MESH_PAD_XY_M = 2.0
@@ -49,24 +46,24 @@ SHAPE_PARAMS = {
     "sx": outcrop_width, "sy": outcrop_width, "sz": SHAPE_HEIGHT,
     "r": SHAPE_RADIUS, "h": SHAPE_HEIGHT, "a": outcrop_width,
 }
-SHAPE_PARAMS["cz"] = SHAPE_PARAMS["sz"] / 2.0   # rect: center at half-height (= 0.5)
+SHAPE_PARAMS["cz"] = SHAPE_PARAMS["sz"] / 2.0   # rect: center at half-height
 cube_height = SHAPE_PARAMS["sz"]
 
 strengthAm = 0.0024                              # A/m
 inclination_deg = 90.0
 declination_deg = 0.0
-noise_floor = 0.5                                # nT, 1-sigma additive
+noise_floor = ROVER_ADOPTED_NT                    # nT, 1-sigma additive noise (Table 1)
 relative_error = 0.0
 dh_fine = 0.25                                   # m
 
-# Imaging pointing/range uncertainty: only used to inflate the central-body mask by a small margin.
+# Imaging pointing/range uncertainty; used only to inflate the central-body mask slightly.
 POSE_RANGE_ERR_MAX_M = 0.01
 POSE_POINTING_ERR_MAX_DEG = (1.0, 1.0)
 
 mu0 = 4.0 * np.pi * 1e-7
-strengthnT = strengthAm * mu0 * 1e9              # A/m -> nT  (~3.0159 nT)
+strengthnT = strengthAm * mu0 * 1e9              # A/m to nT
 
-# Central-mask inflation (worst-case rotation, no translation term).
+# Central-mask inflation for the worst-case rotation (no translation term).
 _max_rot_deg = max(abs(POSE_POINTING_ERR_MAX_DEG[0]), abs(POSE_POINTING_ERR_MAX_DEG[1]))
 MASK_MARGIN_FRAC = 0.00 + 0.01 * _max_rot_deg + 0.5 * 0.0
 MASK_MARGIN_Z = 0.00 + 0.005 * _max_rot_deg + 0.25 * 0.0
@@ -74,10 +71,10 @@ MASK_MARGIN_Z = 0.00 + 0.005 * _max_rot_deg + 0.25 * 0.0
 # Sweep controls
 SPACING = 0.01                                   # 1 cm sampling
 DELTA_R = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-N_MC = 250                                        # >= 200 draws per Delta_r
+N_MC = 250                                        # draws per Delta_r
 MASTER_SEED = 20260812
 
-# True central-body magnetization vector (nT), I = 90 deg, D = 0 -> straight down (-z).
+# True central-body magnetization vector (nT): I = 90 deg, D = 0, i.e. along -z.
 I_rad = np.deg2rad(inclination_deg)
 D_rad = np.deg2rad(declination_deg)
 mag_vector_true = np.array([
@@ -88,7 +85,7 @@ mag_vector_true = np.array([
 
 
 # --------------------------------------------------------------------------- #
-# 2) Shape masks
+# Shape masks
 # --------------------------------------------------------------------------- #
 def create_shape_mask(x, y, z, cx, cy, cz, shape, shape_params,
                       margin_frac=0.0, margin_z=0.0):
@@ -127,10 +124,10 @@ def create_shape_mask(x, y, z, cx, cy, cz, shape, shape_params,
 
 
 # --------------------------------------------------------------------------- #
-# 3) Neighbor layout and scene bounds
+# Neighbor layout and scene bounds
 # --------------------------------------------------------------------------- #
 def secondary_objects_for():
-    """The four neighbors, sized as volume fractions of the 4x4x1 m central prism."""
+    """The four neighbors, sized as volume fractions of the 4 x 4 x 1 m central prism."""
     primary_radius = max(SHAPE_PARAMS["sx"], SHAPE_PARAMS["sy"]) / 2.0     # 2.0
     primary_volume = SHAPE_PARAMS["sx"] * SHAPE_PARAMS["sy"] * SHAPE_PARAMS["sz"]  # 16.0
     primary_height = SHAPE_PARAMS["sz"]                                    # 1.0
@@ -160,10 +157,9 @@ def obj_radius_of(shape_type, pr):
 
 
 def outcrop_configs_for(delx, case):
-    """Return the five outcrop configs (central + 4 neighbours) with per-case magnetization.
+    """Return the five outcrop configs (central plus four neighbors) for case 'A' or 'B'.
 
-    case 'A' (parallel):     central -z, all neighbours -z.
-    case 'B' (antiparallel): central -z, N/S -z, E/W +z.
+    Case A: all bodies -z. Case B: central and N/S -z, E/W +z.
     """
     primary_radius, primary_volume, primary_height, secondaries = secondary_objects_for()
     traverse_distance = primary_radius + TRAVERSE_OFFSET       # 3.0
@@ -175,7 +171,7 @@ def outcrop_configs_for(delx, case):
     configs = [{
         "shape": SHAPE, "center": (cx, cy, cz),
         "params": dict(SHAPE_PARAMS), "label": "Primary (rect)",
-        "magnetization": mag_down,       # central is -z in both cases (global sign fixed)
+        "magnetization": mag_down,       # central body is -z in both cases
         "is_primary": True,
     }]
 
@@ -208,7 +204,7 @@ def outcrop_configs_for(delx, case):
 
         if case == "A":
             mvec = mag_down
-        else:  # case B: E/W flipped
+        else:  # case B: E/W reversed
             mvec = mag_up if side in ("east", "west") else mag_down
 
         configs.append({
@@ -263,7 +259,7 @@ def build_mesh(delx):
 
 
 # --------------------------------------------------------------------------- #
-# 4) Survey: square traverse at 1 cm
+# Survey: square traverse at 1 cm
 # --------------------------------------------------------------------------- #
 def build_survey_xyz(spacing=SPACING):
     bounding_radius = max(SHAPE_PARAMS["sx"], SHAPE_PARAMS["sy"]) / 2.0    # 2.0
@@ -287,7 +283,7 @@ def make_survey(sxyz):
 
 
 # --------------------------------------------------------------------------- #
-# 5) Forward: build masks, clean data (all 5 bodies), central operator G_cen
+# Forward model: masks, noise-free data (all five bodies), central operator G_cen
 # --------------------------------------------------------------------------- #
 def sim_over(mesh, survey, active_cells):
     nC = int(active_cells.sum())
@@ -297,12 +293,12 @@ def sim_over(mesh, survey, active_cells):
 
 
 def build_scene_operators(delx, survey):
-    """Return dict with masks, clean data per case, and central operator G_cen (nD x 3)."""
+    """Return a dict with the masks, noise-free data per case and the central operator G_cen (nD x 3)."""
     mesh = build_mesh(delx)
     cc = mesh.cell_centers
     x, y, z = cc[:, 0], cc[:, 1], cc[:, 2]
 
-    # Per-case magnetization fields and union mask.
+    # Magnetization per case and union mask
     def build_case(case):
         configs, _pr, _ph = outcrop_configs_for(delx, case)
         M = np.zeros((mesh.nC, 3))
@@ -324,13 +320,13 @@ def build_scene_operators(delx, survey):
     M_A, inside_all_A, primary = build_case("A")
     M_B, inside_all_B, _ = build_case("B")
 
-    # Clean data over each case's union active set.
+    # Noise-free data over each case's union active set
     sim_A = sim_over(mesh, survey, inside_all_A)
     d_clean_A = np.asarray(sim_A.dpred(utils.mkvc(M_A[inside_all_A])), float)
     sim_B = sim_over(mesh, survey, inside_all_B)
     d_clean_B = np.asarray(sim_B.dpred(utils.mkvc(M_B[inside_all_B])), float)
 
-    # Central-only operator G_cen (nD x 3): the parametric inversion's forward map.
+    # Central-body operator G_cen (nD x 3), the forward map of the inversion
     nCc = int(primary.sum())
     sim_cen = sim_over(mesh, survey, primary)
     cols = []
@@ -338,7 +334,7 @@ def build_scene_operators(delx, survey):
         e = np.zeros(3 * nCc)
         e[k * nCc:(k + 1) * nCc] = 1.0
         cols.append(np.asarray(sim_cen.dpred(e), float))
-    G_cen = np.column_stack(cols)                 # (nD, 3), maps uniform (Mx,My,Mz)[nT] -> nT
+    G_cen = np.column_stack(cols)                 # (nD, 3), maps uniform (Mx, My, Mz) [nT] to data [nT]
 
     return {
         "mesh": mesh, "primary_mask": primary, "nC_central": nCc,
@@ -349,7 +345,7 @@ def build_scene_operators(delx, survey):
 
 
 # --------------------------------------------------------------------------- #
-# 6) Metrics
+# Metrics
 # --------------------------------------------------------------------------- #
 def dir_err_deg(rec, true):
     rec = np.asarray(rec, float); true = np.asarray(true, float)
@@ -366,11 +362,11 @@ def summarize(a):
 
 
 # --------------------------------------------------------------------------- #
-# 7) Validation: converged iterative (MagnetizedShapes) vs closed-form
+# Check: iterative solution vs closed form
 # --------------------------------------------------------------------------- #
 class MagnetizedShapesRect(maps.IdentityMap):
-    """Parametric map for one rectangular body (9 parameters: bounding box + Mx, My, Mz);
-    only Mx, My, Mz have nonzero derivatives because the geometry is frozen."""
+    """Parametric map for one rectangular body (9 parameters: bounding box, Mx, My, Mz).
+    Only Mx, My, Mz have nonzero derivatives; the geometry is held fixed."""
 
     def __init__(self, mesh, active_cells):
         self._mesh_ref = mesh
@@ -422,7 +418,7 @@ def run_skateparkv3_iterative(mesh, survey, primary_mask, dobs, sigma, m0_mag):
              directives.UpdatePreconditioner(),
              directives.TargetMisfit(chifact=1.0)]
     inv = inversion.BaseInversion(invprob, directiveList=dlist)
-    # Starting parametric model: true central bbox geometry + starting magnetization m0_mag.
+    # Starting model: true bounding box and starting magnetization m0_mag
     m0 = np.array([-SHAPE_RADIUS, -SHAPE_RADIUS, 0.0, SHAPE_RADIUS, SHAPE_RADIUS, cube_height,
                    *m0_mag], dtype=float)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -431,7 +427,7 @@ def run_skateparkv3_iterative(mesh, survey, primary_mask, dobs, sigma, m0_mag):
 
 
 # --------------------------------------------------------------------------- #
-# 8) Main sweep
+# Main sweep
 # --------------------------------------------------------------------------- #
 def main():
     os.makedirs("results", exist_ok=True)
@@ -464,11 +460,11 @@ def main():
         "sweep": {"A": {}, "B": {}},
     }
 
-    # ---- one-time validation at Delta_r = 1, case A ----
+    # Check at Delta_r = 1, case A
     print("\n[validate] converged iterative (MagnetizedShapes/ProjectedGNCG) vs closed-form LS ...")
     ops1 = build_scene_operators(1, survey)
     G1 = ops1["G_cen"]
-    K1 = np.linalg.pinv(G1)                          # cold-start LS operator (3 x nD)
+    K1 = np.linalg.pinv(G1)                          # least-squares operator (3 x nD)
     rng_v = np.random.default_rng(MASTER_SEED)
     d_noisy = ops1["d_clean"]["A"] + rng_v.normal(0.0, noise_floor, size=nD)
     m_cf = K1 @ d_noisy
@@ -490,17 +486,17 @@ def main():
                 "closed-form used for the N>=200 sweep",
     }
 
-    # ---- full sweep ----
+    # Sweep
     for delx in DELTA_R:
         ops = build_scene_operators(delx, survey) if delx != 1 else ops1
         G = ops["G_cen"]
         K = np.linalg.pinv(G)
         for case in ("A", "B"):
             d_clean = ops["d_clean"][case]
-            rng = np.random.default_rng(MASTER_SEED + 100 * delx + (0 if case == "A" else 1))   # deterministic per (Delta_r, case)
+            rng = np.random.default_rng(MASTER_SEED + 100 * delx + (0 if case == "A" else 1))   # seed per (Delta_r, case)
             noise = rng.normal(0.0, noise_floor, size=(N_MC, nD))
             D = d_clean[None, :] + noise
-            M_rec = D @ K.T                          # (N, 3) recovered central M [nT]
+            M_rec = D @ K.T                          # (N, 3) recovered M [nT]
             pred = M_rec @ G.T
             resid_rms = np.sqrt(np.mean(((pred - D) / noise_floor) ** 2, axis=1))
 

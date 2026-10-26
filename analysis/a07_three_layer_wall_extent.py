@@ -1,28 +1,25 @@
-"""a07 - Three-layer wall: does the recovery depend on the wall ending at x = +-50 m? (paper Section 4.4)
+"""a07 - Three-layer wall: dependence of the recovery on the wall ending at x = +-50 m (paper Section 4.4).
 
-The paper's wall is 100 m long (x = -50..50) and the traverse runs x = -120..120 m, so the traverse passes
-both ends of every flow. A flow magnetized along strike (x) produces no external field if it is infinitely
-long (a 2-D body magnetized along its axis has no external field), so the ends carry the information on
-M_x. Here we change the wall geometry and keep everything else as in a03 (flows 5 m thick, 50 m deep into
-the wall, z = 0-5/5-10/10-15 m; M = 2.4e-3 A/m along -z/+y/+z; traverse y = -1 m, z = 0.5 m and, for the
-pair, z = 12.5 m; 1 cm sampling; sigma_B = 0.50 nT; closed-form weighted least squares, N = 500 draws
-with the same noise per case).
-
-Each flow is built from exact analytic prisms (engine prism_cell_operator), so a flow can be a union of
-boxes (the 90-degree bend case).
+The wall of the paper is 100 m long (x = -50..50) and the traverse runs x = -120..120 m, so it passes both
+ends of every flow. A flow magnetized along strike (x) has no external field if it is infinitely long, so the
+ends carry the information on M_x. This script varies the wall geometry and keeps the rest as in a03 (flows
+5 m thick, 50 m deep, z = 0-5/5-10/10-15 m; M = 2.4e-3 A/m along -z/+y/+z; traverse y = -1 m, z = 0.5 m and,
+for the pair, z = 12.5 m; 1 cm sampling; sigma_B = 0.50 nT; closed-form weighted least squares; N = 500 draws,
+the same noise for every case). Each flow is built from analytic prisms (prism_cell_operator in the engine), so
+a flow can be a union of boxes (the 90-degree bend).
 
 Cases
-  W50       x = -50..50 (paper geometry), traverse x = -120..120
-  W100/W250/W1000   x = +-100, +-250, +-1000 m, same traverse (traverse never reaches an end for W250+)
+  W50       x = -50..50 (geometry of the paper), traverse x = -120..120
+  W100/W250/W1000   x = +-100, +-250, +-1000 m, same traverse (the traverse never reaches an end for W250+)
   END       x = -1000..50: one end inside the traverse (flow truncated by a crater, fault or rille bend)
-  END_deep / BEND_deep  as END / BEND with the flows extending 1000 m back into the wall instead of 50 m
-  W1000_XPROF  W1000 plus a 100 m profile driven straight away from the wall at x = 0 (cross-strike)
-  W50_ELEV_<h>  paper wall, ground traverse +-120 m, elevated traverse only over |x| <= h (on the wall face)
-  Every case is also inverted with three local-frame (site-field) offsets fitted ("site_offsets_fitted").
   BEND      x = -1000..0 along the rille, then a 90-degree bend; the second limb runs along -y
             (rock at x = 0..50, y = -1000..50). Traverse: 120 m along each limb (1 m standoff).
-For the straight long walls we also invert for the cross-strike components only (M_y, M_z per flow,
-M_x fixed at zero, which is its true value here), which is all a 2-D section can constrain.
+  END_deep / BEND_deep  as END / BEND with the flows extending 1000 m back into the wall instead of 50 m
+  W1000_XPROF  W1000 plus a 100 m profile driven straight away from the wall at x = 0 (cross-strike)
+  W50_ELEV_<h>  wall of the paper, ground traverse +-120 m, elevated traverse only over |x| <= h
+Every case is also inverted with three local-frame (site-field) offsets fitted ("site_offsets_fitted"). For the
+straight long walls the cross-strike components only (M_y, M_z per flow, M_x = 0) are also inverted, which is
+all a 2-D section constrains.
 
 Run:  python analysis/a07_three_layer_wall_extent.py
 Out:  results/analysis/a07_three_layer_wall_extent.json
@@ -49,7 +46,7 @@ def line(p0, p1, z):
 
 def traverse(case, z):
     if case.startswith("W50_ELEV") and z > 1.0:
-        half = float(case.split("_")[-1])                 # elevated traverse limited to |x| <= half (on the wall)
+        half = float(case.split("_")[-1])                 # elevated traverse limited to |x| <= half
         return line((-half, -1.0), (half, -1.0), z)
     if case == "W1000_XPROF":
         a = line((-120.0, -1.0), (120.0, -1.0), z)
@@ -86,7 +83,7 @@ def G_for(case, sxyz):
     for (z0, z1) in ZL:
         g = sum(prism_cell_operator((x0, x1, y0, y1, z0, z1), sxyz) for (x0, x1, y0, y1) in boxes(case))
         Gs.append(g)                                     # (nD, 3) for this layer
-    # parameter order: [Mx L1..L3, My L1..L3, Mz L1..L3] as in the engine
+    # Parameter order: [Mx L1..L3, My L1..L3, Mz L1..L3], as in the engine
     return np.column_stack([Gs[l][:, c] for c in range(3) for l in range(3)])
 
 
@@ -142,7 +139,7 @@ def main():
     cases = _s.argv[1:] or ["W50", "W100", "W250", "W1000", "END", "BEND", "END_deep", "BEND_deep", "W1000_XPROF",
                             "W50_ELEV_50", "W50_ELEV_25"]
     fn = os.path.join(ROOT, "results", "analysis", "a07_three_layer_wall_extent.json")
-    if _s.argv[1:] and os.path.exists(fn):      # rerunning some cases only: keep the others
+    if _s.argv[1:] and os.path.exists(fn):      # with arguments, keep the stored results of the other cases
         out["cases"] = json.load(open(fn)).get("cases", {})
     for case in cases:
         res = {}

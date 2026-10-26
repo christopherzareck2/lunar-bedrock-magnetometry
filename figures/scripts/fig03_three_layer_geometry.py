@@ -1,5 +1,5 @@
-"""Figure 3 - Three-layer wall geometry (same layout language as Figures 1 and 2), drawn from the
-constants of engine/three_layer_wall.py and inversion_helpers.three_layer_mesh:
+"""Figure 3 - Three-layer wall geometry, from engine/three_layer_wall.py (LAYER_Z, M_LAYERS, BASE_Y, BASE_Z,
+ELEVATED_Z, traverse()) and engine/inversion_helpers.three_layer_mesh (wall extents). The wall:
 
   flows: x in [-50, 50] m, y in [0, 50] m (into the wall), z in [0,5], [5,10], [10,15] m
   M: flow 1 (bottom) -z, flow 2 +y (into the wall), flow 3 (top) +z, |M| = 2.4e-3 A/m
@@ -10,15 +10,29 @@ constants of engine/three_layer_wall.py and inversion_helpers.three_layer_mesh:
 (B) the wall face seen from the rover side (xz), vertical exaggeration 3
 (C) vertical section through x = 0 (yz), to scale
 """
+import os, sys
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import paperstyle as ps
 
-LAYERS = [(0, 5, "Flow 1", (0, 0, -1)), (5, 10, "Flow 2", (0, 1, 0)), (10, 15, "Flow 3", (0, 0, 1))]
-XW, YW = 50.0, 50.0
-Y_ROV, Z_LO, Z_HI, X_TR = -1.0, 0.5, 12.5, 120.0
-VE = 3.0      # wall face (B); plan (A) and section (C) are to scale
-YA, ZL, YC = (-10.0, 60.0), (-2.5, 17.5), (-8.0, 62.0)
+sys.path.insert(0, os.path.join(ps.ROOT, "engine"))
+import three_layer_wall as TL   # scenario definition
+
+# Wall extents from the mesh (x in [-XW, XW], y in [0, YW], z cells = the three flows)
+_mesh = TL.H.three_layer_mesh()
+XW = float(_mesh.nodes_x[-1])
+YW = float(_mesh.nodes_y[-1])
+assert np.allclose(_mesh.nodes_x[[0, -1]], [-XW, XW]) and _mesh.nodes_y[0] == 0.0
+assert np.allclose(_mesh.nodes_z, [0.0] + [zt for _, zt in TL.LAYER_Z]), "LAYER_Z disagrees with three_layer_mesh"
+# Flows: (z bottom, z top, label, unit magnetization direction)
+LAYERS = [(zb, zt, f"Flow {i + 1}", tuple(int(round(v)) for v in TL.M_LAYERS[i] / TL.M_NRM_MIN))
+          for i, (zb, zt) in enumerate(TL.LAYER_Z)]
+# Traverse stations (1 cm spacing)
+TRAV_LO = TL.traverse(TL.BASE_Y, TL.BASE_Z)        # ground traverse, y = -1 m, z = 0.5 m
+TRAV_HI = TL.traverse(TL.BASE_Y, TL.ELEVATED_Z)    # elevated traverse (Table 4), z = 12.5 m
+VE = 3.0      # vertical exaggeration of the wall face (B); (A) and (C) are to scale
+YA, ZL, YC = (-10.0, 60.0), (-2.5, 17.5), (-8.0, 62.0)   # axis limits
 XA = 75.0     # half-width of the plan view (A); the traverse continues to +-120 m
 
 
@@ -28,7 +42,7 @@ def panel_plan(ax):
     for xa in (-35, -12, 12, 35):
         for ya in (15, 35):
             ps.mark_out(ax, xa, ya, s=110, lw=1.8)
-    ps.trav(ax, [-X_TR, X_TR], [Y_ROV, Y_ROV], ps.LS_LOOP, zorder=6)
+    ps.trav(ax, TRAV_LO[:, 0], TRAV_LO[:, 1], ps.LS_LOOP, zorder=6)
     ps.triad(ax, -68, 16, 11, ("x", "y"), color="white", out_of_page="z")
     ax.set_xlim(-XA, XA); ax.set_ylim(*YA); ax.set_aspect("equal")
     ax.set_xticks([-50, 0, 50]); ax.set_yticks([0, 25, 50])
@@ -46,8 +60,13 @@ def panel_face(ax):
                 ps.arrow(ax, xa, zc - m[2] * 1.6, 0, m[2] * 3.2)
             else:
                 ps.mark_into(ax, xa, zc, s=80, lw=1.8)
-    ps.trav(ax, [-X_TR, X_TR], [Z_LO, Z_LO], ps.LS_LOOP, "Ground traverse", zorder=6)
-    ps.trav(ax, [-X_TR, X_TR], [Z_HI, Z_HI], ps.LS_ELEV, "Elevated traverse", zorder=6)
+    lo, hi = TRAV_LO[np.abs(TRAV_LO[:, 0]) <= XA + 1e-6], TRAV_HI[np.abs(TRAV_HI[:, 0]) <= XA + 1e-6]
+    # Only stations inside the plotted window are drawn, so the dash pattern starts at the frame edge
+    ps.trav(ax, lo[:, 0], lo[:, 2], ps.LS_LOOP, "Ground traverse", zorder=6)
+    # Dashes as in ps.LS_ELEV, with a phase offset of 7 that places the pattern as if it started just outside the frame
+    ps.trav(ax, hi[:, 0], hi[:, 2], (7.0, (5, 3)), zorder=6)
+    ax.plot([], [], color=ps.TRAV_DARK, lw=ps.GEO_TRAV_LW, ls=ps.LS_ELEV, label="Elevated traverse",
+            solid_capstyle="butt", dash_capstyle="butt")   # legend handle, default dash phase
     ax.set_ylim(*ZL); ax.set_aspect(VE)
     ax.set_xticks([-50, 0, 50]); ax.set_yticks([0, 5, 10, 15])
     ax.set_xlabel(r"$x$ (m, along strike)"); ax.set_ylabel(r"$z$ (m)")
@@ -79,7 +98,7 @@ def main():
     x0, x1 = ps.COL_X
     axA = g.axes(x0, T, ps.COL_W, hA)
     axB = g.axes(x0, T + hA + ps.SHARE_GAP, ps.COL_W, hB, sharex=axA)
-    axC = g.axes(x1, T + (bottom - T - hC) / 2 - 0.2, ps.COL_W, hC)   # centred beside A and B (label space below)
+    axC = g.axes(x1, T + (bottom - T - hC) / 2 - 0.2, ps.COL_W, hC)   # centered beside A and B (space for labels below)
     panel_plan(axA); panel_face(axB); panel_section(axC)
     hL, lL = axB.get_legend_handles_labels()
     mx = axC.scatter([], [], marker="x", s=120, c="black", linewidths=2.0)

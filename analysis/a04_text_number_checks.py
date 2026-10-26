@@ -1,8 +1,8 @@
-"""a04 - Numbers quoted in Sections 4.2 and 4.4 that a02 and a03 do not print.
+"""a04 - Numbers quoted in Sections 4.2 and 4.4 that are not printed by a02 and a03.
 
   1. Isolated outcrop, paper geometry: per-component std of the recovered M (drive-by / drive-around),
      and 95th percentile of the direction error (drive-around).
-  2. Imaging mis-pose grid: does pointing or range error dominate direction and intensity errors?
+  2. Imaging mis-pose grid: relative contributions of pointing and range error to the direction and intensity errors.
   3. Three-layer: nearest-face distance of each flow from the ground traverse (y = -1, z = 0.5).
 
 Run:  python analysis/a04_text_number_checks.py
@@ -20,7 +20,7 @@ out = {}
 for name in A2.SURVEYS:
     sxyz = A2.survey(name)
     G = prism_cell_operator(A2.BND, sxyz)
-    M, _ = linear_mc(G, A2.M_TRUE, G, SIGMA_B, 1000, seed_for(f"a02:base:{name}"))  # same seed as a02 baseline
+    M, _ = linear_mc(G, A2.M_TRUE, G, SIGMA_B, 1000, seed_for(f"a02:base:{name}"))  # seed of the a02 baseline
     out[f"{name}_component_std_Am"] = dict(zip("xyz", M.std(axis=0).tolist()))
 a = out["drive_by_component_std_Am"]; b = out["drive_around_component_std_Am"]
 out["drive_by_over_drive_around_std"] = {k: a[k] / b[k] for k in "xyz"}

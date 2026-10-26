@@ -1,10 +1,11 @@
-"""Quick reproduction check (about a minute): rerun two cheap parts of the analysis from scratch and compare
-them with the stored results in results/analysis/.
+"""Reruns three short parts of the analysis (about a minute) and compares them with the stored results in
+results/analysis/:
 
   a06 part E  sampling interval vs noise ASD (Table 3, Section 5.1)
   a09 part M  heterogeneous ground vs depth to its top (Section 5.5)
+  a06 part J  Figure 8 panel B at 500 inversions per point (check in the Figure 8 caption)
 
-Every run is seeded (seed_for in engine/inversion_helpers.py), so the numbers must match to rounding.
+The runs are seeded (seed_for in engine/inversion_helpers.py), so the numbers match to rounding.
 Run from the repository root:  python tests/reproduce_check.py
 """
 import os, sys, json, io, contextlib
@@ -43,6 +44,10 @@ out = {}
 with contextlib.redirect_stdout(io.StringIO()):
     A6.part_E(out)
 ok &= compare("a06 part E", out["E_sampling_vs_ASD"], stored6["E_sampling_vs_ASD"])
+out = {}
+with contextlib.redirect_stdout(io.StringIO()):
+    A6.part_J(out)
+ok &= compare("a06 part J", out["J_fig8_n500_check"], stored6["J_fig8_n500_check"])
 stored9 = json.load(open(os.path.join(ROOT, "results", "analysis", "a09_systematics.json")))
 out = {}
 with contextlib.redirect_stdout(io.StringIO()):

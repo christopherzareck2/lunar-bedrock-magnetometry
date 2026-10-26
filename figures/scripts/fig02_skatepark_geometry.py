@@ -1,12 +1,13 @@
-"""Figure 2 - Multi-body ("skate park") scene, drawn from the scene definition used for every
-Section 4.3 number (engine/skatepark_1cm_dr_sweep.py: secondary_objects_for, outcrop_configs_for).
+"""Figure 2 - Multi-body ("skate park") scene of Section 4.3, from engine/skatepark_1cm_dr_sweep.py
+(secondary_objects_for, outcrop_configs_for).
 
 (A) Case A, plan view: all five bodies magnetized along -z (x = into the page).
-(B) Case B, plan view: east (hemisphere) and west (sphere) neighbours reversed to +z (o = out of page).
-(C) Case B, xz section at y = 0 through the west sphere, central prism and east hemisphere, showing the
-    sensor height (z = 0.5 m) where the traverse crosses the section.
-Scene shown at Delta_r = 1 m (the closest spacing in the sweep); Delta_r is the gap between the
-traverse and the nearest point of each neighbour, swept 1-10 m in Figure 6.
+(B) Case B, plan view: east (hemisphere) and west (sphere) neighbors reversed to +z (o = out of the page).
+(C) Case B, xz section at y = 0 through the west sphere, central prism and east hemisphere, with the sensor
+    height (z = 0.5 m) where the traverse crosses the section.
+The scene is shown at Delta_r = 1 m, the smallest value in the sweep (SP.DELTA_R[0]). Delta_r is the gap between
+the traverse and the nearest point of each neighbor and is varied from 1 to 10 m in Figure 6. The bodies come from
+SP.outcrop_configs_for and the traverse from SP.build_survey_xyz; nothing is run.
 """
 import os, sys
 import numpy as np
@@ -15,11 +16,16 @@ from matplotlib.patches import Rectangle, Circle, Polygon
 import paperstyle as ps
 
 sys.path.insert(0, os.path.join(ps.ROOT, "engine"))
-import skatepark_1cm_dr_sweep as SP  # scene definition only; nothing is run
+import skatepark_1cm_dr_sweep as SP  # scene definition
+import inversion_helpers as IH
 
-DR = 1.0
-XL, YP, ZC = (-10.4, 10.4), (-9.1, 7.6), (-1.2, 2.6)   # plan x/y and section z limits (m), all to scale
-LOOP = 3.0
+DR = float(SP.DELTA_R[0])                    # smallest spacing in the sweep (1 m)
+SURVEY = SP.build_survey_xyz()               # traverse stations of Section 4.3 (square loop)
+LOOP = float(SURVEY[:, 0].max())             # half-side of the loop (3 m)
+SENSOR_Z = float(SURVEY[0, 2])               # sensor height of the traverse
+LOOP_XY = np.vstack([SURVEY[:, :2], SURVEY[:1, :2]])   # closed back to the start
+XL, YP, ZC = (-10.4, 10.4), (-9.1, 7.6), (-1.2, 2.6)   # plan x/y and section z limits (m)
+assert (SP.SHAPE_PARAMS["sx"], SP.SHAPE_PARAMS["sy"], SP.SHAPE_PARAMS["sz"]) == tuple(IH.PRISM_DIMS)
 
 
 def body_plan(ax, cfg, sym):
@@ -53,9 +59,8 @@ def plan_panel(ax, case, letter, legend):
     ax.set_facecolor(ps.BG)
     for c in cfgs:
         body_plan(ax, c, "x" if c["magnetization"][2] < 0 else "o")
-    sq = np.array([[-LOOP, -LOOP], [LOOP, -LOOP], [LOOP, LOOP], [-LOOP, LOOP], [-LOOP, -LOOP]])
-    ps.trav(ax, sq[:, 0], sq[:, 1], ps.LS_LOOP, "Drive-around", zorder=5)
-    ps.start_dot(ax, -LOOP, -LOOP)
+    ps.trav(ax, LOOP_XY[:, 0], LOOP_XY[:, 1], ps.LS_LOOP, "Drive-around", zorder=5)
+    ps.start_dot(ax, SURVEY[0, 0], SURVEY[0, 1])
     ps.start_legend_handle(ax)
     if legend:
         ps.triad(ax, -8.9, -7.3, 1.4, ("x", "y"), color="white", out_of_page="z")
@@ -87,15 +92,15 @@ def section_panel(ax):
         up = c["magnetization"][2] > 0
         kw = dict(facecolor=ps.SRC, edgecolor="black", lw=2, zorder=3)
         if st == "rect":
-            ax.add_patch(Rectangle((cx - p["sx"] / 2, 0), p["sx"], p["sz"], **kw)); xs, zc, L = (cx - 1, cx + 1), 0.5, 0.35
+            ax.add_patch(Rectangle((cx - p["sx"] / 2, cz - p["sz"] / 2), p["sx"], p["sz"], **kw)); xs, zc, L = (cx - p["sx"] / 4, cx + p["sx"] / 4), cz, 0.35
         elif st == "sphere":
             ax.add_patch(Circle((cx, cz), p["r"], **kw)); xs, zc, L = (cx,), cz, 0.45
         elif st == "hemisphere_z+":
             t = np.linspace(0, np.pi, 100)
-            ax.add_patch(Polygon(np.c_[cx + p["r"] * np.cos(t), p["r"] * np.sin(t)], closed=True, **kw)); xs, zc, L = (cx,), 0.45 * p["r"], 0.45
+            ax.add_patch(Polygon(np.c_[cx + p["r"] * np.cos(t), cz + p["r"] * np.sin(t)], closed=True, **kw)); xs, zc, L = (cx,), cz + 0.45 * p["r"], 0.45
         for x in xs:
             ps.arrow(ax, x, zc - (L if up else -L), 0, (2 * L if up else -2 * L), lw=1.5, ms=10)
-    ps.guide(ax, [-13, 13], 0.5)
+    ps.guide(ax, [-13, 13], SENSOR_Z)
     ax.set_ylim(*ZC); ax.set_aspect("equal")
     ax.set_xticks([-5, 0, 5]); ax.set_yticks([0, 2])
     ax.set_xlabel(r"$x$ (m)"); ax.set_ylabel(r"$z$ (m)")

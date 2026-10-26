@@ -1,21 +1,17 @@
 """Three-layer wall (paper Section 4.4, Table 4): per-flow recovery with the iterative parametric inversion.
 
-Scenario: three stacked 5 m flows (x in -50..50 m, y in 0..50 m into the wall, z in 0..15 m), each
-one exact prism with |M| = 2.4e-3 A/m: flow 1 (bottom, oldest) along -z, flow 2 along +y, flow 3
-(top, youngest) along +z. Wall face at y = 0, rover traverse at y = -1 m, x = -120..120 m at 1 cm
-(24 001 stations), sigma_B = 0.50 nT per axis.
+Scenario: three stacked 5 m flows (x = -50..50 m, y = 0..50 m, z = 0..15 m), each one prism with
+|M| = 2.4e-3 A/m: flow 1 (bottom) along -z, flow 2 along +y, flow 3 (top) along +z. The wall face is at
+y = 0 and the rover traverse at y = -1 m, x = -120..120 m, 1 cm spacing (24 001 stations), sigma_B = 0.50 nT.
 
-Arms: (A) single base traverse at z = 0.5 m; (C) base traverse plus a second traverse at
-z = 12.5 m inverted jointly. Nine free magnetization components (K = 3), geometry fixed.
+Arms: (A) one traverse at z = 0.5 m; (B) one traverse at z = 12.5 m; (C) both traverses, inverted jointly.
+The nine magnetization components (K = 3) are solved for with the geometry fixed.
 
-Solver: ProjectedGNCG with a zero-reference Smallness term (beta0_ratio = 1e-4), preconditioner
-update and TargetMisfit(chifact = 1); N = 1000 noise realizations per arm. SimPEG's misfit is
-phi_d = sum((r / sigma)^2), so the target is nD and the normalized residual rms is sqrt(phi_d / nD);
-a realization is accepted on the misfit reached, not on the optimizer's exit flag.
-
-Because the nine-parameter operator is ill-conditioned (inter-flow correlation up to ~0.997 for a
-single traverse), the damping is not negligible for the weakly constrained upper flows, so the
-undamped closed-form least-squares solution is reported alongside the iterative one.
+Solver: ProjectedGNCG with a zero-reference Smallness term (beta0_ratio = 1e-4), preconditioner update
+and TargetMisfit(chifact = 1), N = 1000 noise realizations per arm. A realization is accepted if the
+normalized residual rms, sqrt(phi_d / nD), is within RMS_TOL of 1. Because the operator is ill-conditioned
+(inter-flow correlation up to about 0.997 for one traverse), the undamped closed-form least-squares
+solution is reported alongside the iterative one.
 
 Run:  python engine/three_layer_wall.py
 Out:  results/engine/three_layer_wall_results.json
@@ -47,28 +43,28 @@ RESULTS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 # --------------------------------------------------------------------------- #
 # Scenario (paper Sections 3.3.5 and 3.5.3)
 # --------------------------------------------------------------------------- #
-LAYER_Z = [(0.0, 5.0), (5.0, 10.0), (10.0, 15.0)]      # mesh cell order = ascending z
+LAYER_Z = [(0.0, 5.0), (5.0, 10.0), (10.0, 15.0)]      # cells in ascending z
 LAYER_NAMES = ["bottom/oldest", "middle", "top/youngest"]
 
-M_LAYERS = M_NRM_MIN * np.array([[0., 0., -1.],          # bottom/oldest: -z_hat (down)
-                                 [0., 1., 0.],           # middle: +y_hat (into wall)
-                                 [0., 0., 1.]])          # top/youngest: +z_hat (up)
-# simpeg vector ordering: [mx(all cells), my(all cells), mz(all cells)]
+M_LAYERS = M_NRM_MIN * np.array([[0., 0., -1.],          # bottom: -z
+                                 [0., 1., 0.],           # middle: +y (into the wall)
+                                 [0., 0., 1.]])          # top: +z
+# SimPEG vector ordering: [mx (all cells), my (all cells), mz (all cells)]
 M_TRUE_9 = np.concatenate([M_LAYERS[:, 0], M_LAYERS[:, 1], M_LAYERS[:, 2]])
 
-BASE_Y, BASE_Z = -1.0, 0.5        # rover at the BASE of the wall, 1 m standoff
+BASE_Y, BASE_Z = -1.0, 0.5        # base traverse, 1 m standoff
 DX = 0.01                         # 1 cm sampling
 X0, X1 = -120.0, 120.0
-ELEVATED_Z = 12.5                 # height of the second (elevated) traverse
+ELEVATED_Z = 12.5                 # second (elevated) traverse
 
-N_MC = N_HEADLINE                 # standard Monte-Carlo count (1000)
+N_MC = N_HEADLINE                 # Monte Carlo realizations
 RMS_TOL = 0.05                    # accept |normalized residual rms - 1| <= 5%
 
 SEEDS_USED = {}
 
 
 def record_seed(label):
-    # the labels ("part8_...") are the ones the stored results were generated with; changing them changes the draws
+    # The labels ("part8_...") set the seeds of the stored results; changing them changes the draws.
     s = int(seed_for(label))
     SEEDS_USED[label] = s
     return s
@@ -88,7 +84,7 @@ def traverse(y, z, dx=DX):
 
 
 def per_layer_signal(G, sigma=SIGMA_B):
-    """Noise-free signal statistics for each flow driven ALONE through the shared operator."""
+    """Noise-free signal statistics for each flow acting alone through the shared operator."""
     out = []
     for i in range(3):
         m9 = np.zeros(9)
@@ -110,8 +106,8 @@ def nearest_face_distance(y_sensor, z_sensor):
 
 
 # --------------------------------------------------------------------------- #
-# 9-parameter damped solver (same configuration as inversion_helpers.iterative_recover_M_ref;
-# written out here so the run can also return beta and the convergence log).
+# Nine-parameter solver (same configuration as inversion_helpers.iterative_recover_M_ref; written
+# out here so the run also returns beta and the convergence log).
 # --------------------------------------------------------------------------- #
 def gncg_solve_9(sim, dobs, sigma, m0, beta_seed, reference_model,
                  opt_kwargs=None, beta0_ratio=DEFAULT_BETA0_RATIO):
@@ -155,7 +151,7 @@ def verify_solver_fidelity(sim, dobs, sigma):
 # Monte Carlo
 # --------------------------------------------------------------------------- #
 def converged_mc(sim, noise, sigma=SIGMA_B, label=""):
-    """Iterative inversion of every noise realization, with per-trial convergence status."""
+    """Iterative inversion of every noise realization, with the convergence status of each."""
     nD = int(sim.survey.nD)
     d_clean = np.asarray(sim.dpred(M_TRUE_9), float)
     assert noise.shape[1] == nD, "noise matrix does not match data size"
@@ -207,7 +203,7 @@ def convergence_report(trials):
 
 
 def per_layer_table(M_rec, resid_rms, geom, signal):
-    """Per-flow metrics; dM reported signed (recovery_metrics) and absolute."""
+    """Per-flow metrics, with dM both signed (recovery_metrics) and absolute."""
     out = {}
     for i, Mi in enumerate(layer_slices(M_rec)):
         blk = recovery_metrics(Mi, M_LAYERS[i], resid_rms, SIGMA_B, geom,
@@ -261,7 +257,7 @@ def run_arm(name, sxyz, noise, label, dists):
     table_it = per_layer_table(M_it, rms_it, geom, signal)
     print_table(f"  {name} - ITERATIVE (damped), N={N_MC}", table_it, dists)
 
-    # undamped closed-form least squares (parts 2/3/5/7 path for this scenario)
+    # Undamped closed-form least squares
     K = ls_operator(G)
     D = (G @ M_TRUE_9)[None, :] + noise
     M_ls = D @ K.T
@@ -319,7 +315,7 @@ def main():
                            sim_low_probe.dpred(M_TRUE_9) + rng_probe.normal(0, SIGMA_B, nD_low),
                            SIGMA_B)
 
-    # matched per-traverse noise streams
+    # Same noise streams for each traverse
     lab_low = f"part8_wall_noise_y{BASE_Y}_z{BASE_Z}_dx{DX}"
     lab_high = f"part8_wall_noise_y{BASE_Y}_z{ELEVATED_Z}_dx{DX}"
     noise_low = np.random.default_rng(record_seed(lab_low)).normal(0., SIGMA_B, (N_MC, nD_low))
@@ -334,8 +330,8 @@ def main():
         f"ARM B: single ELEVATED traverse (y={BASE_Y}, z={ELEVATED_Z})",
         sxyz_high, noise_high, "B_elevated", dists_high)
 
-    # vertical pair: stacked receiver list; data ordering verified to be the
-    # concatenation of the two per-traverse blocks, so hstacked noise stays matched.
+    # Vertical pair: stacked receiver list; the data are the two per-traverse blocks
+    # concatenated, so the stacked noise matches the single-traverse noise.
     sxyz_pair = np.vstack([sxyz_low, sxyz_high])
     sim_pair_probe = wall_sim(sxyz_pair)
     assert np.allclose(sim_pair_probe.dpred(M_TRUE_9),

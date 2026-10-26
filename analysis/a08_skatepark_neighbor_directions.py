@@ -1,19 +1,19 @@
 """a08 - Skate park: neighbors magnetized in other directions, and a joint inversion (paper Section 4.3).
 
-Same scene, mesh (0.25 m), survey (square loop, 1 m standoff, 0.5 m height, 1 cm) and noise
-(0.50 nT) as the skate-park run of Figure 6 (engine/skatepark_1cm_dr_sweep.py, imported).
-The data are linear in each body's uniform magnetization, so we build a 3-column operator for every
-body (central + 4 neighbours) and form the data for any neighbour magnetization.
+Scene, mesh (0.25 m), survey (square loop, 1 m standoff, 0.5 m height, 1 cm spacing) and noise (0.50 nT) are
+those of the skate-park run of Figure 6 (engine/skatepark_1cm_dr_sweep.py, imported). The data are linear in
+the uniform magnetization of each body, so a 3-column operator is built for each of the five bodies and the
+data are formed for any neighbor magnetization.
 
-Neighbour configurations (central always -z, |M| equal for all bodies):
-  A   all neighbours -z (configuration A)
-  B   N/S -z, E/W +z (configuration B)
-  HX  all neighbours +x (horizontal, along one survey side)
-  HY  all neighbours +y
-  RND each neighbour in an independent random direction, redrawn for every noise realization
+Neighbor configurations (central body -z, |M| equal for all bodies):
+  A   all neighbors -z
+  B   N/S -z, E/W +z
+  HX  all neighbors +x (horizontal, along one survey side)
+  HY  all neighbors +y
+  RND each neighbor in an independent random direction, redrawn for every noise realization
 Inversions:
-  central  central body only (3 parameters), as in the paper
-  joint    all five imaged bodies (15 parameters), shapes known
+  central  central body only (3 parameters)
+  joint    all five bodies (15 parameters), shapes known
 N = 250 per case at Delta_r = 1, 2, 5 m.
 
 Run:  python analysis/a08_skatepark_neighbor_directions.py

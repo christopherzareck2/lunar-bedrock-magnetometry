@@ -1,4 +1,4 @@
-"""Comparison of magnetization inversion approaches (paper Table 2).
+"""Compares magnetization inversion approaches (paper Table 2).
 
 Test case: 2 x 2 x 2 m cube, |M| = 0.08 A/m along -z, drive-around traverse at 1 m standoff
 (sensor 0.5 m), 0.6 nT per-axis Gaussian noise, 0.25 m mesh cells, inversion domain equal to the
@@ -93,7 +93,7 @@ def run_spherical(mesh, body, nA, survey, dat, m_cart, seed):
            + regularization.WeightedLeastSquares(mesh, active_cells=body, mapping=wires.phi))
     for r in reg.objfcts:
         r.reference_model = np.zeros(3 * nA)
-    # warm start from the Cartesian solution (Section 3.4.1)
+    # Start from the Cartesian solution (Section 3.4.1)
     m0 = mat_utils.cartesian2spherical(m_cart.reshape((-1, 3), order="F")).reshape(-1, order="F")
     dmis = data_misfit.L2DataMisfit(data=dat, simulation=sim_s)
     opt = optimization.ProjectedGNCG(maxIter=25, lower=-np.inf, upper=np.inf, maxIterCG=30, tolCG=1e-4)

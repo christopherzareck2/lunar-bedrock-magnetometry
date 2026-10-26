@@ -1,4 +1,4 @@
-"""Forward operators, seeded random numbers, survey geometry and inversion routines used by every scenario.
+"""Forward operators, seeded random numbers, survey geometry and inversion routines shared by the scenarios.
 
 Units: model values are magnetization in A/m; predicted data are in nT
 (source amplitude = mu0 * 1e9 nT, i.e. an inducing field of 1 A/m).
@@ -15,6 +15,7 @@ from simpeg.potential_fields import magnetics as mag
 
 from core import (generate_traverse,
                   generate_rille_traverse, mu0)
+from noise_budget import ROVER_ADOPTED_NT
 
 # --------------------------------------------------------------------------- #
 # Physical constants and scenario defaults
@@ -22,10 +23,15 @@ from core import (generate_traverse,
 AMP_NT = mu0 * 1.0e9          # SimPEG source amplitude for H0 = 1 A/m
 
 M_NRM_MIN = 2.4e-3            # A/m, reference magnetization M_ref
-SIGMA_B = 0.5                # nT per axis, adopted rover uncertainty
+SIGMA_B = ROVER_ADOPTED_NT   # nT per axis, rover noise (Table 1; engine/noise_budget.py)
 STANDOFF = 1.0               # m, default rover-to-outcrop clearance
 SENSOR_H = 0.5               # m, sensor height
 PRISM_DIMS = (4.0, 4.0, 1.0) # m, isolated-outcrop prism (sx, sy, sz)
+
+# Surveys around the isolated outcrop (Section 4.2; Figures 1, 4, 5, 8): name -> (traverse_type for
+# core.generate_traverse, approach_distance in m).
+PAPER_SURVEYS = {"drive_around": ("full_orbit", 5.0), "drive_by": ("drive_by", 6.0)}
+PAPER_SPACING = 0.01         # m, along-track sampling of the paper surveys (1 cm)
 
 SPACING_CORE = 0.05          # m, outcrop core/sweep surveys
 N_HEADLINE = 1000
@@ -34,13 +40,13 @@ N_SWEEP = 200
 DRIVE = {"drive_around": "full_orbit", "drive_by": "drive_by"}
 
 # --------------------------------------------------------------------------- #
-# Reproducibility: master seed -> named per-experiment seeds
+# Seeding: master seed and named per-experiment seeds
 # --------------------------------------------------------------------------- #
 MASTER_SEED = 20260624
 ACTIVE_SEED = MASTER_SEED
 
 def seed_for(name):
-    """Deterministic per-experiment seed derived from ACTIVE_SEED and a label."""
+    """Per-experiment seed derived from ACTIVE_SEED and a label."""
     h = hashlib.sha256(f"{ACTIVE_SEED}:{name}".encode()).hexdigest()
     return int(h[:8], 16)
 
@@ -71,16 +77,16 @@ def prism_cell_operator(bounds, rx_locs):
 # Cold-start linear solution operator + linear-operator Monte Carlo
 # --------------------------------------------------------------------------- #
 def ls_operator(G_inv):
-    """Cold-start zero-reference weighted least-squares operator K (p x nD), sigma cancels.
-    m_rec = K @ d. Asserts the operator does not depend on the true model (cold start)."""
+    """Cold-start, zero-reference weighted least-squares operator K (p x nD), with m_rec = K @ d.
+    The noise sigma cancels. Asserts that K does not depend on the true model."""
     G_inv = np.asarray(G_inv, float)
     K = np.linalg.solve(G_inv.T @ G_inv, G_inv.T)
     assert np.allclose(K @ np.zeros(G_inv.shape[0]), 0.0), "operator not zero-referenced"
     return K
 
 def linear_mc(G_data, m_true_full, G_inv, sigma, n, seed):
-    """Generate n noisy data draws from G_data@m_true_full and invert each with K(G_inv).
-    Returns M_rec (n x p_inv) and normalized residual rms per draw (n,)."""
+    """Draw n noisy data sets from G_data @ m_true_full and invert each with K(G_inv).
+    Returns M_rec (n x p_inv) and the normalized residual rms per draw (n,)."""
     G_data = np.asarray(G_data, float); G_inv = np.asarray(G_inv, float)
     m_true_full = np.asarray(m_true_full, float)
     K = ls_operator(G_inv)
@@ -109,7 +115,7 @@ def dir_err_deg(rec, true):
 
 def recovery_metrics(M_rec, m_true_body, resid_rms, sigma, survey_geom,
                      store_raw=False, per_component=False):
-    """Standard metrics block over an MC ensemble for one recovered body/layer.
+    """Recovery metrics over a Monte Carlo ensemble for one body or layer.
     M_rec: (n,3) recovered vectors; m_true_body: (3,) truth for this body."""
     M_rec = np.asarray(M_rec, float); m_true_body = np.asarray(m_true_body, float)
     de = np.array([dir_err_deg(M_rec[i], m_true_body) for i in range(len(M_rec))])
@@ -152,11 +158,20 @@ def outcrop_survey(traverse_type, standoff, dims=PRISM_DIMS, spacing=0.5, center
                              sensor_height=SENSOR_H, spacing=spacing,
                              orbit_offset=standoff, approach_distance=5.0, shape="rect")
 
+def paper_survey(name, standoff=STANDOFF, spacing=PAPER_SPACING, sensor_height=SENSOR_H):
+    """Station coordinates (n x 3, ground frame: prism standing on z = 0) of a paper survey, 'drive_around' or
+    'drive_by' (PAPER_SURVEYS). The analysis scripts use the same call in the body frame (sensor_height = 0)."""
+    kind, approach = PAPER_SURVEYS[name]
+    sp = {"cx": 0.0, "cy": 0.0, "sx": PRISM_DIMS[0], "sy": PRISM_DIMS[1], "sz": PRISM_DIMS[2]}
+    return np.asarray(generate_traverse(traverse_type=kind, shape_params=sp, sensor_height=sensor_height,
+                                        spacing=spacing, orbit_offset=standoff, approach_distance=approach,
+                                        shape="rect"), float)
+
 # --------------------------------------------------------------------------- #
 # Three-layer wall scenario
 # --------------------------------------------------------------------------- #
 def three_layer_mesh():
-    """Three stacked 5 m flows (z in 0-15 m) as a 3-cell wall (x in -50..50, y in 0..50)."""
+    """Three stacked 5 m flows (z = 0-15 m) as a 3-cell wall (x = -50..50 m, y = 0..50 m)."""
     return discretize.TensorMesh([np.r_[100.], np.r_[50.], np.r_[5., 5., 5.]], origin=[-50., 0., 0.])
 
 def three_layer_G(sensor_y, sensor_z, x0=-120., x1=120., spacing=0.10):
@@ -244,15 +259,12 @@ def iterative_recover_M_ref(sim, dobs, sigma, m0, beta_seed, reference_model,
 
 
 def operator_diagnostics(G, n_layers=3):
-    """Information-content diagnostics for a stacked layered-wall operator.
+    """Singular values, condition number and inter-layer subspace correlations of a layered-wall operator.
 
-    G is (nD x 3*n_layers) in SimPEG vector ordering (all mx, then my, then mz, so
-    layer i owns columns [i + k*n_layers for k in range(3)], matching layer_slices).
-    Returns the 3*n_layers singular values, the condition number, and the pairwise
-    inter-layer subspace correlations: for layers (i, j) the maximum cosine of the
-    principal angles between the column spaces of their (nD x 3) sub-operators
-    (1.0 = some response direction of layer i is exactly reproducible by layer j,
-    i.e. no independent information; 0.0 = orthogonal responses)."""
+    G is (nD x 3*n_layers) in SimPEG vector ordering (all mx, then my, then mz), so layer i owns
+    columns [i + k*n_layers for k in range(3)]. For layers (i, j) the correlation is the maximum
+    cosine of the principal angles between the column spaces of their (nD x 3) sub-operators:
+    1 means a response of layer i can be reproduced by layer j, 0 means orthogonal responses."""
     G = np.asarray(G, float)
     s = np.linalg.svd(G, compute_uv=False)
     bases = []

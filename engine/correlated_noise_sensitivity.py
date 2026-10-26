@@ -1,18 +1,20 @@
-"""Along-track correlated noise, used by the correlated-noise and drift tests.
+"""Along-track correlated noise for the correlated-noise and drift tests.
 
-Per axis, with the total variance held at (0.50 nT)^2 for every correlation length L:
+Per axis, with the total variance fixed at (0.50 nT)^2 for every correlation length L:
 
     n(s) = w(s) + c(s)
     w ~ N(0, 0.05^2) white sensor noise
     c   stationary Ornstein-Uhlenbeck (AR(1)) process, variance 0.50^2 - 0.05^2, correlation exp(-ds / L)
 
-L -> 0 recovers the i.i.d. case; L -> infinity is a constant offset per survey.
+L -> 0 gives the i.i.d. case; L -> infinity gives a constant offset per survey.
 """
 import numpy as np
 
+from noise_budget import ROVER_ADOPTED_NT, ROVER_INSTRUMENT_NT   # Table 1 (engine/noise_budget.py)
+
 SPACING = 0.01            # m, along-track sampling
-SIGMA_TOT = 0.50          # nT, total per-axis std
-SIGMA_W = 0.05            # nT, white sensor noise
+SIGMA_TOT = ROVER_ADOPTED_NT      # nT, total per-axis std (0.50)
+SIGMA_W = ROVER_INSTRUMENT_NT     # nT, white sensor noise (0.05)
 SIGMA_C = float(np.sqrt(SIGMA_TOT ** 2 - SIGMA_W ** 2))   # correlated std (~0.4975 nT)
 
 
@@ -23,9 +25,9 @@ def along_track_ds(sxyz):
 
 
 def make_noise(sxyz, L, n_draws, rng, n_axes=3):
-    """(n_draws, nR*3) correlated noise, station-major [bx,by,bz per station], var = SIGMA_TOT^2.
+    """Correlated noise, shape (n_draws, nR*3), station-major [bx, by, bz per station], variance SIGMA_TOT^2.
 
-    L is None -> pure white SIGMA_TOT (iid reference); np.inf -> per-survey static offset limit.
+    L = None gives white noise (SIGMA_TOT); L = np.inf gives a constant offset per survey.
     """
     nR = len(sxyz)
     if L is None:
@@ -44,11 +46,10 @@ def make_noise(sxyz, L, n_draws, rng, n_axes=3):
 
 
 def effective_sample_count(sxyz, L):
-    """Per-axis effective independent-sample count for the full noise autocovariance.
+    """Effective number of independent samples per axis for the full noise autocovariance.
 
-    tau = 1 + 2 * sum_{k>=1} (1-k/N) * gamma_k/gamma_0 ; N_eff = N/tau.
-    gamma_0 = SIGMA_W^2 + SIGMA_C^2 ; gamma_k = SIGMA_C^2 * exp(-|dist_k|/L) (white only at lag 0).
-    Uses the median along-track step (uniform for drive_by; ~uniform for full_orbit).
+    tau = 1 + 2 * sum_{k>=1} (1-k/N) * gamma_k/gamma_0, N_eff = N/tau, with gamma_0 = SIGMA_W^2 + SIGMA_C^2
+    and gamma_k = SIGMA_C^2 * exp(-|dist_k|/L) (white noise at lag 0 only). Uses the median along-track step.
     """
     N = len(sxyz)
     g0 = SIGMA_W ** 2 + SIGMA_C ** 2

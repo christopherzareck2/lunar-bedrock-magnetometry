@@ -1,18 +1,15 @@
-"""Background magnetization Monte Carlo (paper Sections 3.3.1 and 5.5.2); run in the paper geometry by
+"""Background magnetization Monte Carlo (paper Sections 3.3.1 and 5.5.2), run in the paper geometry by
 analysis/a05_background_and_correlated_noise.py.
 
-The paper justifies a zero-magnetization background with Runcorn's theorem: a large, uniformly
-magnetized mare unit produces negligible external field, so the outcrop signal comes from
-topographic contrast. This run measures how far from uniform the underlying unit can be before
-that justification fails: a heterogeneously magnetized 5 m slab beneath the outcrop generates an
-additional field that is added to the data and not inverted for; the single-body inversion of
-isolated outcrop is otherwise as in Section 4.2 (drive-around survey, 1 cm sampling).
+A zero-magnetization background is justified by Runcorn's theorem for a large, uniformly magnetized
+mare unit. This script tests how far from uniform that unit can be: a heterogeneously magnetized 5 m
+slab beneath the outcrop adds a field to the data that is not inverted for, and the isolated outcrop
+is inverted as in Section 4.2 (drive-around survey, 1 cm sampling).
 
-Slab: z = -5.5..-0.5 m, 1 m cells over a central core, geometrically padded to about +/-1200 m so
-that a uniformly magnetized slab produces an edge artifact of 0.65 % of sigma_B (uniform control,
-reported). Heterogeneity per cell group: intensity log-uniform over [0.01, 1] x M_NRM,min,
-direction scattered about -z with a swept angular width sigma_theta in {0, 5, 15, 30, 60, 90} deg
-plus an isotropic reference.
+Slab: z = -5.5..-0.5 m, 1 m cells over a central core, padded geometrically to about +/-1200 m, so that
+a uniformly magnetized slab gives an edge artifact of 0.65 % of sigma_B (uniform control). Intensity is
+log-uniform over [0.01, 1] x M_NRM,min and direction is scattered about -z with angular width
+sigma_theta = 0, 5, 15, 30, 60 and 90 deg, plus an isotropic reference.
 
 Run:  python analysis/a05_background_and_correlated_noise.py background
 """
@@ -54,7 +51,7 @@ PAD_FAC = 1.6                 # geometric padding growth factor
 PAD_TO = 1000.0               # m, minimum lateral reach of the padding
 
 INT_LOG10_RANGE = (-2.0, 0.0)  # log-uniform intensity: [0.01, 1.0] * M_NRM_min
-# SWEEP 3: log-uniform intensity floors [f, 1.0] * M_NRM_min; f = 1.0 is a fixed intensity
+# Sweep 3: log-uniform intensity floors [f, 1.0] * M_NRM_min; f = 1.0 is a fixed intensity
 INTENSITY_FLOORS = [1.0, 0.8, 0.5, 0.2, 0.05, 0.01]
 
 SIGMA_THETA_DEG = [0.0, 5.0, 15.0, 30.0, 60.0, 90.0]
@@ -83,7 +80,7 @@ def record_seed(label):
 # Background slab mesh and forward operators
 # --------------------------------------------------------------------------- #
 def slab_mesh():
-    """1 m core over +/- CORE_HALF, geometric padding out past PAD_TO; 5 x 1 m in z."""
+    """1 m core over +/- CORE_HALF with geometric padding beyond PAD_TO; five 1 m cells in z."""
     n_core = int(round(2 * CORE_HALF / DH))
     pads, w, reach = [], DH * PAD_FAC, CORE_HALF
     while reach < PAD_TO:
@@ -97,7 +94,7 @@ def slab_mesh():
 
 
 def slab_G(mesh, rx_locs, active_cells=None):
-    """Vector sensitivity (nD x 3*nA) for the slab, same source convention as _sim_for."""
+    """Vector sensitivity (nD x 3*nA) of the slab, with the same source convention as _sim_for."""
     nA = mesh.n_cells if active_cells is None else int(np.count_nonzero(active_cells))
     kw = {} if active_cells is None else {"active_cells": active_cells}
     sim = mag.simulation.Simulation3DIntegral(
@@ -111,7 +108,7 @@ def slab_G(mesh, rx_locs, active_cells=None):
 
 
 def uniform_operator(G, nA):
-    """(nD x 3) operator mapping ONE uniform (Mx,My,Mz) applied to all nA cells -> data."""
+    """(nD x 3) operator mapping one uniform (Mx, My, Mz) applied to all nA cells to the data."""
     return np.column_stack([G[:, k * nA:(k + 1) * nA].sum(axis=1) for k in range(3)])
 
 
@@ -130,11 +127,11 @@ def group_ids(cc_core, bxy, vertical_coherent):
 
 
 def draw_groups(rng, n_groups, sigma_theta_deg, n_draws, int_log10_range=INT_LOG10_RANGE):
-    """(n_draws, n_groups, 3) magnetizations [A/m] about -z_hat.
+    """Magnetizations [A/m] scattered about -z, shape (n_draws, n_groups, 3).
 
-    intensity ~ log-uniform on 10**int_log10_range * M_NRM_min; (0, 0) = fixed at M_NRM_min
-    theta     = |N(0, sigma_theta)| clipped to [0, 180] deg from -z_hat, azimuth U(0, 2pi);
-                sigma_theta_deg is None -> exactly isotropic on the sphere.
+    Intensity is log-uniform on 10**int_log10_range * M_NRM_min ((0, 0) fixes it at M_NRM_min). The angle
+    from -z is |N(0, sigma_theta)| clipped to [0, 180] deg with uniform azimuth; sigma_theta_deg = None
+    gives an isotropic distribution on the sphere.
     """
     amp = M_NRM_MIN * 10.0 ** rng.uniform(*int_log10_range, size=(n_draws, n_groups))
     if sigma_theta_deg is None:
@@ -147,7 +144,7 @@ def draw_groups(rng, n_groups, sigma_theta_deg, n_draws, int_log10_range=INT_LOG
                                           size=(n_draws, n_groups))), 0.0, np.pi)
     phi = rng.uniform(0.0, 2.0 * np.pi, size=(n_draws, n_groups))
     st, ct = np.sin(theta), np.cos(theta)
-    # unit vector at polar angle theta measured from -z_hat
+    # Unit vector at polar angle theta from -z
     return np.stack([amp * st * np.cos(phi), amp * st * np.sin(phi), -amp * ct], axis=-1)
 
 
@@ -155,7 +152,7 @@ def draw_groups(rng, n_groups, sigma_theta_deg, n_draws, int_log10_range=INT_LOG
 # Metrics
 # --------------------------------------------------------------------------- #
 def invert_ls(K, G_out, D):
-    """Closed-form LS recovery of the 3 outcrop components + normalized residual rms."""
+    """Closed-form least-squares recovery of the 3 outcrop components and the normalized residual rms."""
     M_rec = D @ K.T
     resid = M_rec @ G_out.T - D
     return M_rec, np.sqrt(np.mean((resid / SIGMA_B) ** 2, axis=1))
@@ -179,11 +176,9 @@ def block(M_rec, rms, d_bg, sig_rms, geom):
 def crossing(xs, ys, level):
     """Smallest x at which the piecewise-linear y(x) first reaches `level`.
 
-    Returns {"x", "status"} with status one of
-      "interpolated"          : a genuine bracketed crossing
-      "below_lowest_sampled"  : y already >= level at the smallest x sampled (x = that point,
-                                the true crossing lies below the sampled range)
-      "not_reached"           : y < level everywhere sampled (x = None)
+    Returns {"x", "status"}; status is "interpolated" (crossing bracketed by samples),
+    "below_lowest_sampled" (y >= level at the smallest x sampled, which is returned) or
+    "not_reached" (y < level everywhere, x = None).
     """
     xs, ys = np.asarray(xs, float), np.asarray(ys, float)
     o = np.argsort(xs)
@@ -208,14 +203,14 @@ def fmt_cross(c):
 def sweep_point(coh_label, lvl_label, sth, gid, n_groups, rng, G_core, U_all, U_core,
                 d_out, noise, sig_rms, geom, K_ls, G_out, nD,
                 int_log10_range=INT_LOG10_RANGE):
-    """One (coherence, dispersion, intensity-range) point: draw, forward, invert, metrics."""
+    """One (coherence, dispersion, intensity range) point: draw, forward model, invert, metrics."""
     Mg = draw_groups(rng, n_groups, sth, N_MC, int_log10_range=int_log10_range)
     Mc = Mg[:, gid, :]
     m_bar = Mc.mean(axis=1)
     m_flat = np.concatenate([Mc[:, :, 0], Mc[:, :, 1], Mc[:, :, 2]], axis=1)
     d_core = m_flat @ G_core.T
-    d_raw = d_core + m_bar @ (U_all - U_core).T      # padding at the realization core mean
-    d_dc = d_core - m_bar @ U_core.T                 # zero-mean fluctuation only
+    d_raw = d_core + m_bar @ (U_all - U_core).T      # padding at the realization mean
+    d_dc = d_core - m_bar @ U_core.T                 # zero-mean fluctuation
     cell_int = np.linalg.norm(Mc, axis=2) / M_NRM_MIN
     entry = {"sigma_theta_deg": sth, "n_groups": n_groups,
              "intensity_log10_range": list(int_log10_range),
@@ -240,7 +235,7 @@ def main():
     print(f"MASTER_SEED={MASTER_SEED} ACTIVE_SEED={ACTIVE_SEED} | N_MC={N_MC} | "
           f"sigma_B={SIGMA_B} nT/axis | dx={SPACING} m")
 
-    # ---- outcrop survey and operator ----
+    # Outcrop survey and operator
     sxyz = outcrop_survey("full_orbit", STANDOFF, spacing=SPACING)
     nD = 3 * len(sxyz)
     G_out = prism_cell_operator(bnd, sxyz)
@@ -256,7 +251,7 @@ def main():
     print(f"  signal rms={sig_rms:.4f} nT  peak|B|={np.abs(d_out).max():.4f} nT  "
           f"(sigma_B={SIGMA_B} nT)")
 
-    # ---- background slab mesh, operators ----
+    # Background slab mesh and operators
     mesh = slab_mesh()
     cc = mesh.cell_centers
     core = (np.abs(cc[:, 0]) <= CORE_HALF) & (np.abs(cc[:, 1]) <= CORE_HALF)
@@ -269,7 +264,7 @@ def main():
           f"(+/-{CORE_HALF:.0f} m)")
     t0 = time.time()
     G_full = slab_G(mesh, sxyz)
-    U_all = uniform_operator(G_full, mesh.n_cells)          # whole-slab uniform operator
+    U_all = uniform_operator(G_full, mesh.n_cells)          # uniform operator for the whole slab
     G_core = np.ascontiguousarray(
         np.hstack([G_full[:, k * mesh.n_cells:(k + 1) * mesh.n_cells][:, core]
                    for k in range(3)]))
@@ -278,7 +273,7 @@ def main():
     print(f"  slab sensitivities built in {time.time()-t0:.1f}s "
           f"(core block {G_core.shape}, {G_core.nbytes/1e9:.2f} GB)")
 
-    # ---- CRITICAL TRAP: uniform-background control ----
+    # Control: uniform background
     print(f"\n=== CONTROL: perfectly uniform background (every cell M = M_NRM_min*(-z_hat)) ===")
     d_unif = U_all @ m_true
     unif_rms = float(np.sqrt(np.mean(d_unif ** 2)))
@@ -300,7 +295,7 @@ def main():
                        "status": "STOPPED: uniform-background control not negligible"}, f,
                       indent=2)
         return 1
-    # control also pushed through the full inversion chain
+    # Control through the same inversion
     noise = np.random.default_rng(record_seed("runA_white_noise")).normal(
         0.0, SIGMA_B, (N_MC, nD))
     d_bg_unif = np.repeat(d_unif[None, :], N_MC, axis=0)
@@ -314,10 +309,10 @@ def main():
         print(f"  {tag}: theta={de['mean']:5.2f} +/- {de['std']:4.2f} deg  "
               f"dM={me['mean']:+6.2f} +/- {me['std']:5.2f} %  rms={b['residual_rms']['mean']:.4f}")
 
-    # ---- sweep ----
+    # Sweep 1
     levels = [(f"sigma_theta_{int(s)}deg", s) for s in SIGMA_THETA_DEG] + \
              [(ISOTROPIC_LABEL, None)]
-    sim_out = single_cell_sim(bnd, sxyz)     # nP == 3, for the damped iterative arm
+    sim_out = single_cell_sim(bnd, sxyz)     # nP == 3, for the iterative arm
     sweep = {}
     print(f"\n=== SWEEP: {len(COHERENCE)} coherence arms x {len(levels)} dispersion levels, "
           f"N={N_MC} ===")
@@ -345,7 +340,7 @@ def main():
                   f"| dc: theta={dcv['dir_err_deg']['mean']:6.2f} deg "
                   f"| {time.time()-t0:.1f}s", flush=True)
 
-            # damped iterative cross-check on the headline arm (raw variant)
+            # Iterative cross-check on the headline arm (raw data)
             if coh_label == HEADLINE_ARM:
                 bseed = record_seed(f"runA_beta_{coh_label}_{lvl_label}")
                 n_it = min(N_MC, 150)
@@ -372,11 +367,9 @@ def main():
             del d_raw
         sweep[coh_label] = arm
 
-    # ---- SWEEP 2: direction dispersion ALONE (intensity fixed at exactly M_NRM_min) ----
-    # The specified log-uniform intensity spans 100x and by itself dominates the incoherent
-    # background field, which makes the sigma_theta axis in SWEEP 1 nearly flat. Holding the
-    # intensity fixed isolates the angular-dispersion effect and gives a genuine crossing:
-    # (sigma_theta = 0, fixed intensity) IS the perfectly uniform slab.
+    # Sweep 2: direction dispersion only (intensity fixed at M_NRM_min). The log-uniform intensity
+    # of sweep 1 spans two decades and dominates the background field, which flattens the
+    # sigma_theta axis. With fixed intensity, sigma_theta = 0 is the uniform slab.
     print(f"\n=== SWEEP 2: direction dispersion alone (intensity fixed at M_NRM_min) ===")
     sweep2 = {}
     for coh_label, bxy, vcoh in COHERENCE:
@@ -401,7 +394,7 @@ def main():
             del d_raw
         sweep2[coh_label] = arm
 
-    # ---- SWEEP 3: intensity dynamic range alone (all directions exactly -z_hat) ----
+    # Sweep 3: intensity range only (all directions along -z)
     print(f"\n=== SWEEP 3: intensity dynamic range alone (all directions -z_hat) ===")
     sweep3 = {}
     for coh_label, bxy, vcoh in COHERENCE:
@@ -431,7 +424,7 @@ def main():
             del d_raw
         sweep3[coh_label] = arm
 
-    # ---- headline: threshold crossings ----
+    # Threshold crossings
     print("\n=== HEADLINE ===")
     sths = [0.0 if s is None else s for _, s in levels]
     head = {"as_specified_log_uniform_intensity": {}, "direction_dispersion_only": {},
@@ -445,7 +438,7 @@ def main():
         return xs, ys
 
     lvl_keys = [l for l, _ in levels]
-    dir_keys = lvl_keys[:-1]          # drop uniform_sphere for the sigma_theta axis
+    dir_keys = lvl_keys[:-1]          # omit uniform_sphere on the sigma_theta axis
     for coh_label, _, _ in COHERENCE:
         for tag, src in (("as_specified_log_uniform_intensity", sweep),
                          ("direction_dispersion_only", sweep2)):

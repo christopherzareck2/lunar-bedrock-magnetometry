@@ -17,7 +17,7 @@ bnd = prism_bounds((0.0, 0.0, 0.0), PRISM_DIMS)
 # Pose helpers
 # --------------------------------------------------------------------------- #
 def per_receiver_kernel(bounds, rx_locs):
-    """A (nR,3,3): per-receiver 3x3 kernel of the single prism cell; A[r] maps (Mx,My,Mz)->(Bx,By,Bz)."""
+    """Per-receiver 3x3 kernel A, shape (nR,3,3), of the single prism cell; A[r] maps (Mx,My,Mz) to (Bx,By,Bz)."""
     rx_locs = np.asarray(rx_locs, float)
     nR = len(rx_locs)
     sim_mesh = discretize.TensorMesh(
@@ -39,14 +39,14 @@ def imager_R(pointing_deg):
 def warped_recovery(bounds, sxyz, m_true, sigma, n, seed, pointing_max, range_max, mode):
     """Recover M when the inversion body pose is mis-estimated by the imager (data = nominal geometry).
 
-    mode='random' -> uniform within +/-bounds (typical); mode='worst' -> worst-magnitude/random-direction.
+    mode='random': errors uniform within +/-bounds. mode='worst': worst-case magnitudes in random directions.
     """
     sxyz = np.asarray(sxyz, float)
     nR = len(sxyz)
     A_nom = per_receiver_kernel(bounds, sxyz)               # (nR,3,3)
     d_clean = (A_nom @ m_true).ravel()                      # station-major (nD,)
     rng = np.random.default_rng(seed)
-    np.random.seed(int(seed) % (2 ** 32))                   # deterministic geometry stream
+    np.random.seed(int(seed) % (2 ** 32))                   # seed for the geometry draws
     de, me = np.zeros(n), np.zeros(n)
     for i in range(n):
         pdg, trans = generate_pose_errors(

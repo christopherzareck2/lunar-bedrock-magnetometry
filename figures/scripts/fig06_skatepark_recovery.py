@@ -1,10 +1,10 @@
-"""Figure 6 - Central-outcrop recovery versus neighbour separation Delta_r (skate park).
+"""Figure 6 - Central-outcrop recovery versus neighbor separation Delta_r (skate park).
 
 Data: results/engine/skatepark_1cm_dr_sweep_results.json (engine/skatepark_1cm_dr_sweep.py,
 1 cm sampling, N = 250 inversions per point, sigma_B = 0.50 nT, 0.25 m mesh, K = 1 inversion of the
 central prism with all five bodies in the data). Median direction error (orange, left) and median
-absolute intensity error (blue, right). Solid = Case A (all neighbours parallel); dashed = Case B
-(east and west neighbours antiparallel).
+absolute intensity error (blue, right). Solid = Case A (all neighbors parallel); dashed = Case B
+(east and west neighbors antiparallel).
 """
 import os, json
 import numpy as np

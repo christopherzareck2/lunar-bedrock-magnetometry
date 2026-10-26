@@ -5,9 +5,11 @@
     numbers()           # all of them
     count()             # (numbers that match the paper, numbers checked)
 """
-import os, json, math
+import os, sys, json, math
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "engine"))
+import noise_budget as NB      # Table 1 as data (engine/noise_budget.py)
 
 
 def J(name):
@@ -18,7 +20,7 @@ def J(name):
                 return json.load(f)
     raise FileNotFoundError(name)
 
-# Short names for the stored results (one block per result file), then helpers that pick out the quoted values.
+# Short names for the stored results (one block per result file), then helpers that pick out the quoted values
 a2 = J('a02_isolated_outcrop_paper_geometry.json'); a3 = J('a03_three_layer_direction_vs_distance.json')
 a4 = J('a04_text_number_checks.json'); bg = J('a05_background_magnetization_mc_paper_geometry.json')
 cn = J('a05_correlated_noise_requirement_paper_geometry.json'); hs = J('elevated_traverse_height_sweep_results.json')
@@ -102,6 +104,22 @@ ROWS = [
  ('Abstract', '…traverse recovers the lowest flow to ∼4° but the upper two only to ∼30°; adding a traverse 6.4–13 m up the wall recovers all three to <5° if the …', '30', '{:.0f}', a3['cases']['T1_middle_along_x']['layer_2']['dir_err_mean']),
  ('Abstract', '…we derive, with drift ≲0.01 nT rms, loops driven both ways and tilt fitted, brings it to 3–5° with loops centered to 0.1 m and burial ≤0.5 m, or with the buried …', '5', '{:.0f}', max(rngk('REQF_a_dx0.1_b0.5', f=max), rngk('REQF_c_dx0.5_b0', f=max))),
  ('3.2', '…the isolated outcrop of Section 3.3.3 produces a peak field of 0.25 nT along a traverse 1 m from its faces, and all results in Section 4 use …', '0.25', '{:.2f}', da['peak_field_nT']),
+ ('3.2', 'Table 1: Instrument noise (1 s average), rover (nT per axis, 1-σ)', '0.05', '{:.2f}', NB.ROWS[0]['rover_nT']),
+ ('3.2', 'Table 1: Instrument noise (1 s average), lander', '0.05', '{:.2f}', NB.ROWS[0]['lander_nT']),
+ ('3.2', '…reducing the per-sample instrument noise of 0.35 nT axis⁻¹ by √50 to ≈0.05 nT axis⁻¹.', '0.05', '{:.2f}', NB.SAMPLE_NOISE_PER_SAMPLE_NT / math.sqrt(NB.SAMPLES_PER_AVERAGE)),
+ ('3.2', 'Table 1: IMF (raw; not in total), rover', '4.0', '{:.1f}', NB.ROWS[1]['rover_nT']),
+ ('3.2', 'Table 1: IMF (raw; not in total), lander', '4.0', '{:.1f}', NB.ROWS[1]['lander_nT']),
+ ('3.2', 'Table 1: IMF (after lander subtraction), rover', '0.18', '{:.2f}', NB.ROWS[2]['rover_nT']),
+ ('3.2', 'Table 1: Spacecraft stray field (AC + DC), rover', '0.40', '{:.2f}', NB.ROWS[3]['rover_nT']),
+ ('3.2', 'Table 1: Spacecraft stray field (AC + DC), lander', '0.05', '{:.2f}', NB.ROWS[3]['lander_nT']),
+ ('3.2', 'Table 1: Lander reconstruction, lander', '0.16', '{:.2f}', NB.ROWS[4]['lander_nT']),
+ ('3.2', 'Table 1: Total (quadrature sum), rover', '0.44', '{:.2f}', NB.totals()['rover']['rss_nT']),
+ ('3.2', 'Table 1: Total (quadrature sum), lander', '0.17', '{:.2f}', NB.totals()['lander']['rss_nT']),
+ ('3.2', 'Table 1: Margin, rover', '0.06', '{:.2f}', NB.ROVER_MARGIN_NT),
+ ('3.2', 'Table 1: Margin, lander', '0.01', '{:.2f}', NB.LANDER_MARGIN_NT),
+ ('3.2', 'Table 1: Adopted total, rover (the noise σ_B in all forward models and inversions)', '0.50', '{:.2f}', NB.ROVER_ADOPTED_NT),
+ ('3.2', 'Table 1: Adopted total, lander', '0.18', '{:.2f}', NB.LANDER_ADOPTED_NT),
+ ('3.2', '…drawn independently for each 1 s averaged sample and axis, with σ_B = 0.50 nT (the value stored with the results of Section 4.2).', '0.50', '{:.2f}', a2['meta']['sigma_B_nT']),
  ('3.3', "…5-m-thick slab that extends ±1.2 km laterally, which produces a field of 0.003 nT root-mean-square (rms; 0.65% of σ_B and ∼3% of the outcrop's field) along the …", '0.003', '{:.3f}', cu['uniform_field_rms_nT']),
  ('3.3', "…±1.2 km laterally, which produces a field of 0.003 nT root-mean-square (rms; 0.65% of σ_B and ∼3% of the outcrop's field) along the drive-around traverse.", '0.65', '{:.2f}', 100 * cu['ratio_to_sigma_B']),
  ('3.3', 'The slab changes the mean recovered direction error from 3.3° to 3.4° and the mean intensity error from -0.1% to -2.9% (400 inversions), so …', '3.4', '{:.1f}', cu['recovery_closed_form_ls']['dir_err_deg']['mean']),
@@ -352,6 +370,8 @@ ROWS = [
  ('5.1', "…when the drift's variation about its survey mean is 0.03 nT rms per axis (4.7° at 0.029 nT and 6.8° at 0.058 nT).", '4.7', '{:.1f}', a6['G_gradient_and_drift']['drive_around']['drift_L100m'][3]['offsets_fitted']['dir_err_deg']['mean']),
  ('5.1', '…its survey mean is 0.03 nT rms per axis (4.7° at 0.029 nT and 6.8° at 0.058 nT).', '0.058', '{:.3f}', a6['G_gradient_and_drift']['drive_around']['drift_L100m'][4]['rms_about_mean_nT']),
  ('5.1', '…its survey mean is 0.03 nT rms per axis (4.7° at 0.029 nT and 6.8° at 0.058 nT).', '6.8', '{:.1f}', a6['G_gradient_and_drift']['drive_around']['drift_L100m'][4]['offsets_fitted']['dir_err_deg']['mean']),
+ ('5.1', "Figure 8 caption: Each point is 300 inversions, and an independent run with 500 per point agrees within about 0.8° (largest difference in the mean direction error, 500 inversions with the G2 seed label vs the 300-inversion points: 0.63°).", '0.63', '{:.2f}', a6['J_fig8_n500_check']['comparison_with_N300']['same_seed_max_abs_diff_deg']),
+ ('5.1', "Figure 8 caption: Each point is 300 inversions, and an independent run with 500 per point agrees within about 0.8° (largest difference with an independent seed, a06:G2N500: 0.82°, at the largest drift).", '0.82', '{:.2f}', a6['J_fig8_n500_check']['comparison_with_N300']['independent_seed_max_abs_diff_deg']),
  ('5.1', 'Linear or cubic drift terms help little for L between 1 and 100 m (errors of 11–61°), and higher-order drift terms absorb the outcrop signal itself.', '11', '{:.0f}', min(A3['drive_around'][k][m]['dir_err_deg']['mean'] for k in ('1.0','2.0','5.0','10.0','20.0','50.0','100.0') for m in ('rover_world_dc_drift','rover_dc_world_poly3'))),
  ('5.1', 'Linear or cubic drift terms help little for L between 1 and 100 m (errors of 11–61°), and higher-order drift terms absorb the outcrop signal itself.', '61', '{:.0f}', max(A3['drive_around'][k][m]['dir_err_deg']['mean'] for k in ('1.0','2.0','5.0','10.0','20.0','50.0','100.0') for m in ('rover_world_dc_drift','rover_dc_world_poly3'))),
  ('5.1', '…mean is ≲0.03 nT rms per axis for a vertical magnetization, compared with the 0.014 nT contributed by white noise at 0.7 nT Hz⁻¹/2 at periods between 20 min and the 40 min …', '0.014', '{:.3f}', 0.707*math.sqrt(1/1200-1/2400)),

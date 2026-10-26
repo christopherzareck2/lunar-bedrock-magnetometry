@@ -1,12 +1,11 @@
 """Second-traverse height sweep for the three-layer wall (paper Section 4.4, Figure 7).
 
-Sweeps the height z2 of the second traverse (the first stays at z = 0.5 m; same y = -1 m standoff,
-x = -120..120 m, 1 cm sampling) and reports the smallest height at which all three flows recover
-to within 5 deg, and separately 10 deg, together with the joint operator's condition number.
+Sweeps the height z2 of the second traverse (the first stays at z = 0.5 m; y = -1 m, x = -120..120 m,
+1 cm sampling) and gives the smallest height at which all three flows are recovered to within 5 deg and
+10 deg, together with the condition number of the joint operator.
 
-Geometry and solvers are those of engine/three_layer_wall.py (iterative ProjectedGNCG with
-zero-reference damping, and the undamped closed-form least squares). One matched noise matrix is
-reused for the fixed low traverse at every height so that heights differ only in geometry.
+Geometry and solvers are those of engine/three_layer_wall.py (iterative ProjectedGNCG and undamped
+closed-form least squares). The same noise matrix is used for the low traverse at every height.
 
 Run:  python engine/scripts/elevated_traverse_height_sweep.py
 Out:  results/engine/elevated_traverse_height_sweep_results.json
@@ -39,7 +38,7 @@ RESULTS_PATH = os.path.join(os.path.dirname(_REPO), "results", "engine",
                             "elevated_traverse_height_sweep_results.json")
 
 # --------------------------------------------------------------------------- #
-# Scenario (as engine/three_layer_wall.py)
+# Scenario (same as engine/three_layer_wall.py)
 # --------------------------------------------------------------------------- #
 LAYER_Z = [(0.0, 5.0), (5.0, 10.0), (10.0, 15.0)]
 LAYER_NAMES = ["bottom/oldest", "middle", "top/youngest"]
@@ -50,15 +49,15 @@ BASE_Y, BASE_Z = -1.0, 0.5
 DX = 0.01
 X0, X1 = -120.0, 120.0
 
-# Second-traverse heights (m). 0.5 = no vertical separation (degenerate control).
+# Second-traverse heights (m); 0.5 means no vertical separation (control).
 Z2_SWEEP = [0.5, 1.0, 2.0, 3.0, 5.0, 7.5, 10.0, 12.5, 15.0]
-MAST_LIMIT_M = 3.0        # above this a second traverse means driving up the slope
+MAST_LIMIT_M = 3.0        # above this height the second traverse is up the slope
 
 N_MC = 500
 RMS_TOL = 0.05
 THRESHOLDS = [5.0, 10.0]
 
-# Reference values from engine/three_layer_wall.py (iterative solver, N = 1000), for comparison.
+# Reference values from engine/three_layer_wall.py (iterative solver, N = 1000).
 ANCHORS = {
     "single_base_traverse": {"cond": 238.6, "max_corr": 0.997,
                              "dir_deg": [2.59, 24.19, 33.99]},
@@ -106,9 +105,8 @@ def nearest_face_distance(y_sensor, z_sensor):
 
 
 # --------------------------------------------------------------------------- #
-# 9-parameter damped solver (configuration identical to
-# inversion_helpers.iterative_recover_M_ref and engine/three_layer_wall.gncg_solve_9;
-# written out so the run can also return beta and the target)
+# Nine-parameter solver (same configuration as inversion_helpers.iterative_recover_M_ref and
+# engine/three_layer_wall.gncg_solve_9; written out so the run also returns beta and the target)
 # --------------------------------------------------------------------------- #
 def gncg_solve_9(sim, dobs, sigma, m0, beta_seed, reference_model,
                  opt_kwargs=None, beta0_ratio=DEFAULT_BETA0_RATIO):
@@ -136,7 +134,7 @@ def gncg_solve_9(sim, dobs, sigma, m0, beta_seed, reference_model,
 
 
 def verify_solver_fidelity(sim, dobs):
-    """Assert the local solver gives the same result as inversion_helpers.iterative_recover_M_ref."""
+    """Assert that the local solver matches inversion_helpers.iterative_recover_M_ref."""
     m_a, it_a, phi_a, _, _ = gncg_solve_9(sim, dobs, SIGMA_B, np.zeros(9), 1234, np.zeros(9))
     m_b, it_b, phi_b, _ = H.iterative_recover_M_ref(sim, dobs, SIGMA_B, np.zeros(9), 1234,
                                                     np.zeros(9),
@@ -216,7 +214,7 @@ def max_dir_err(table):
 
 
 def crossing(xs, ys, level):
-    """Smallest x where piecewise-linear y(x) drops to <= level (ys DECREASING in x)."""
+    """Smallest x where the piecewise-linear y(x) drops to <= level (y decreasing in x)."""
     xs, ys = np.asarray(xs, float), np.asarray(ys, float)
     o = np.argsort(xs)
     xs, ys = xs[o], ys[o]
@@ -238,7 +236,7 @@ def fmt_cross(c):
 
 
 def smallest_grid_z(zs, maxerr, level):
-    """Smallest SAMPLED z (excluding the degenerate z2 == BASE_Z control) meeting `level`."""
+    """Smallest sampled z (excluding the z2 == BASE_Z control) that meets `level`."""
     ok = [z for z, e in zip(zs, maxerr) if z > BASE_Z and e <= level]
     return float(min(ok)) if ok else None
 
@@ -264,12 +262,12 @@ def main():
     verify_solver_fidelity(sim_low,
                            sim_low.dpred(M_TRUE_9) + rng_probe.normal(0, SIGMA_B, nD_low))
 
-    # matched noise: ONE low-traverse matrix reused at every height
+    # One low-traverse noise matrix, reused at every height
     noise_low = np.random.default_rng(
         record_seed(f"runB_noise_low_y{BASE_Y}_z{BASE_Z}_dx{DX}")).normal(
         0., SIGMA_B, (N_MC, nD_low))
 
-    # ---- baseline: single traverse (anchor cond ~ 238, max corr ~ 0.997) ----
+    # Baseline: single traverse
     print(f"\n=== BASELINE: single traverse at z={BASE_Z} m (no second traverse) ===")
     diag_low = operator_diagnostics(sim_low.G)
     sig_low = per_layer_signal(sim_low.G)
@@ -298,7 +296,7 @@ def main():
                 "max_dir_err_deg_closed_form_ls": max_dir_err(tab_b_ls),
                 "anchor": ANCHORS["single_base_traverse"]}
 
-    # ---- height sweep ----
+    # Height sweep
     print(f"\n=== SWEEP: second-traverse height z2 in {Z2_SWEEP} m, N={N_MC} ===")
     heights = {}
     for z2 in Z2_SWEEP:
@@ -308,8 +306,7 @@ def main():
         sxyz_pair = np.vstack([sxyz_low, sxyz_hi])
         sim_pair = wall_sim(sxyz_pair)
         nD_pair = int(sim_pair.survey.nD)
-        # data ordering must be the concatenation of the per-traverse blocks for the
-        # matched hstacked noise to line up
+        # The data must be the two per-traverse blocks concatenated, as for the stacked noise
         assert np.allclose(sim_pair.dpred(M_TRUE_9),
                            np.concatenate([sim_low.dpred(M_TRUE_9),
                                            wall_sim(sxyz_hi).dpred(M_TRUE_9)])), \
@@ -357,7 +354,7 @@ def main():
               f"rms {conv['normalized_resid_rms']['mean']:.4f} | "
               f"{time.time()-t0:.1f}s", flush=True)
 
-    # ---- headline ----
+    # Summary
     print("\n=== HEADLINE ===")
     zs = [heights[f"z2_{z:g}m"]["z2_m"] for z in Z2_SWEEP]
     conds = [heights[f"z2_{z:g}m"]["operator_diagnostics"]["condition_number"]
@@ -370,7 +367,7 @@ def main():
         errs = [heights[f"z2_{z:g}m"][f"max_dir_err_deg_{sol}"] for z in Z2_SWEEP]
         blk = {}
         for lvl in THRESHOLDS:
-            # exclude the degenerate z2 == BASE_Z control from the interpolation
+            # Exclude the z2 == BASE_Z control from the interpolation
             zz = [z for z in zs if z > BASE_Z]
             ee = [e for z, e in zip(zs, errs) if z > BASE_Z]
             blk[f"all_three_flows_within_{lvl:g}deg"] = {
@@ -390,7 +387,7 @@ def main():
                   f"{fmt_cross(b['interpolated_min_z2_m'])}; smallest sampled z2 = "
                   f"{b['smallest_sampled_z2_m']} m")
 
-    # diminishing returns on the condition number
+    # Change in condition number with height
     zz = [z for z in zs if z > BASE_Z]
     cc = [c for z, c in zip(zs, conds) if z > BASE_Z]
     dcond = [(zz[i], cc[i], cc[i] - cc[i - 1]) for i in range(1, len(zz))]
@@ -411,7 +408,7 @@ def main():
     for z, c, d in dcond:
         print(f"      z2={z:5g} m cond={c:8.2f} (delta {d:+8.2f})")
 
-    # operational side of the mast/slope line
+    # Which side of the mast/slope limit
     op = {}
     for sol in ("iterative", "closed_form_ls"):
         for lvl in THRESHOLDS:
@@ -428,7 +425,7 @@ def main():
     for k, v in op.items():
         print(f"      {k:28s} z2={v['smallest_sampled_z2_m']} m -> {v['side']}")
 
-    # z = 12.5 m anchor comparison
+    # Comparison with three_layer_wall.py at z = 12.5 m
     a = heights["z2_12.5m"]
     anchor_cmp = {
         "anchor": ANCHORS["pair_z12.5"],

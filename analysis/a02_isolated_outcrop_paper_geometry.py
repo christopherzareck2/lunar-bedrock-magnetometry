@@ -1,25 +1,20 @@
 """a02 - Isolated outcrop (paper Section 4.2, Figures 4 and 5).
 
-Geometry (paper Sections 3.3.3 and 3.5.1, Figure 1):
-  4 x 4 x 1 m prism standing on the ground (z = 0..1 m), sensor at z = 0.5 m (mid-height of the
-  outcrop), 1 m standoff from the faces, 1 cm along-track sampling.
-  Drive-around: closed rectangular loop at 1 m standoff (2399 stations).
-  Drive-by: straight pass at 1 m standoff from x = -8 to +8 m (1601 stations).
+Geometry (paper Sections 3.3.3 and 3.5.1, Figure 1): a 4 x 4 x 1 m prism standing on the ground (z = 0..1 m),
+sensor at z = 0.5 m, 1 m standoff from the faces, 1 cm along-track sampling. Drive-around: closed loop at
+1 m standoff (2399 stations). Drive-by: straight pass at 1 m standoff from x = -8 to +8 m (1601 stations).
 
-Implementation: the prism is centred on the origin (z = -0.5..0.5) and the sensor is at z = 0.0, which is
-the same relative geometry as prism 0..1 / sensor 0.5 (the ground is non-magnetic, so only relative position
-matters). With the body centred on the origin, the imaging mis-pose rotation in
-engine/isolated_outcrop_1cm.warped_recovery is about the body centre, as the paper states.
+In the code the prism is centred on the origin (z = -0.5..0.5) and the sensor is at z = 0, which has the same
+relative geometry because the ground is non-magnetic. The imaging mis-pose rotation in
+engine/isolated_outcrop_1cm.warped_recovery is then about the body center.
 
-Parts (all K = 1 closed-form weighted least squares, sigma_B = 0.50 nT per axis, i.i.d. Gaussian):
+Parts (K = 1 closed-form weighted least squares, sigma_B = 0.50 nT per axis, i.i.d. Gaussian noise):
   1. Baseline, N = 1000 per survey.
-  2. Detection sweep, B_NRM/B_ref in {0.1 ... 100}, N = 200 per point (Figure 4 uses a02b, N = 1000).
-  3. Imaging mis-pose grid, pointing 0..6 deg x range 0..0.30 m, N = 100 typical + 32 worst per cell
-     (Figure 5).
+  2. Detection sweep, B_NRM/B_ref = 0.1 to 100, N = 200 per point (Figure 4 uses a02b with N = 1000).
+  3. Imaging mis-pose grid, pointing 0..6 deg x range 0..0.30 m, N = 100 typical + 32 worst per cell (Figure 5).
 
-Intensity-error convention: the paper's intensity error is |(|M_rec| - |M_true|)| / |M_true|, i.e. an ABSOLUTE
-error per recovery. Both the signed and absolute statistics are stored; the figures and text use the
-absolute median, which is the typical single-survey error. The signed mean is the bias.
+Intensity error is | |M_rec| - |M_true| | / |M_true|, an absolute error per recovery. Signed and absolute
+statistics are both stored; the figures and text use the absolute median, and the signed mean is the bias.
 
 Run:  python analysis/a02_isolated_outcrop_paper_geometry.py
 Out:  results/analysis/a02_isolated_outcrop_paper_geometry.json
@@ -34,12 +29,12 @@ os.chdir(os.path.join(ROOT, "engine"))
 
 import isolated_outcrop_1cm as ISO
 from inversion_helpers import (prism_cell_operator, linear_mc, dir_err_deg, seed_for,
-                               M_NRM_MIN, SIGMA_B, STANDOFF, PRISM_DIMS)
+                               M_NRM_MIN, SIGMA_B, STANDOFF, PRISM_DIMS, PAPER_SURVEYS, PAPER_SPACING)
 from core import generate_traverse
 
-SPACING = 0.01
-SENSOR_Z_BODY_FRAME = 0.0      # = 0.5 m above the ground for a prism standing on z = 0
-SURVEYS = {"drive_around": ("full_orbit", 5.0), "drive_by": ("drive_by", 6.0)}
+SPACING = PAPER_SPACING
+SENSOR_Z_BODY_FRAME = 0.0      # 0.5 m above the ground for a prism standing on z = 0
+SURVEYS = PAPER_SURVEYS
 RATIOS = [0.1, 0.5, 1, 2, 3, 4, 5, 10, 25, 50, 100]
 PGRID = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 RGRID = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]

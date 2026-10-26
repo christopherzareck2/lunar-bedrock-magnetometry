@@ -1,14 +1,15 @@
-"""Along-track noise correlation (paper Section 5.1); run in the paper geometry by analysis/a05_background_and_correlated_noise.py.
+"""Along-track noise correlation (paper Section 5.1), run in the paper geometry by
+analysis/a05_background_and_correlated_noise.py.
 
-This run sweeps the correlation length L on a fine grid through
-the short-correlation regime and states the maximum tolerable L in cm and, at 1 cm/s, in seconds.
+Sweeps the correlation length L on a fine grid through the short-correlation regime and gives the
+maximum tolerable L in cm and, at 1 cm/s, in seconds.
 
-Part 1: the inversion assumes i.i.d. noise (cold-start weighted least squares) while the data are
-correlated; isolated drive-around and drive-by (K = 1) and the three-layer wall (K = 3).
-Part 2: noise-aware inversion by generalized least squares, whitening data and operator with the
-true station covariance C = sigma_w^2 I + sigma_c^2 exp(-|s_i - s_j| / L), on matched noise draws.
+Part 1: i.i.d. noise is assumed in the inversion (weighted least squares) while the data are correlated;
+isolated drive-around and drive-by (K = 1) and the three-layer wall (K = 3).
+Part 2: generalized least squares, whitening the data and operator with the station covariance
+C = sigma_w^2 I + sigma_c^2 exp(-|s_i - s_j| / L), on the same noise draws.
 
-The noise generator is engine/correlated_noise_sensitivity.py.
+The noise model is in engine/correlated_noise_sensitivity.py.
 
 Run:  python analysis/a05_background_and_correlated_noise.py noise
 """
@@ -33,7 +34,6 @@ from inversion_helpers import (prism_cell_operator, prism_bounds, ls_operator,
                                survey_geom_dict, layer_slices, three_layer_mesh,
                                M_NRM_MIN, STANDOFF, SENSOR_H, PRISM_DIMS,
                                MASTER_SEED, ACTIVE_SEED)
-# noise model from correlated_noise_sensitivity.py
 from correlated_noise_sensitivity import (make_noise, effective_sample_count,
                                           along_track_ds, SIGMA_TOT, SIGMA_W, SIGMA_C)
 from core import generate_rille_traverse
@@ -46,10 +46,10 @@ RESULTS_PATH = os.path.join(os.path.dirname(_REPO), "results", "engine", "correl
 SPACING = 0.01
 N_MC = 500                 # naive sweep
 N_GLS = 200                # noise-aware arm (matched draws vs naive)
-TRAVERSE_SPEED_MPS = 0.01  # 1 cm/s, for the cm -> seconds conversion
+TRAVERSE_SPEED_MPS = 0.01  # 1 cm/s, to convert cm to seconds
 
-# Fine grid through the short-correlation regime, plus coarse anchors for continuity
-# with correlated_noise_sensitivity.py.
+# Fine grid through the short-correlation regime, plus coarse values (1 and 2 m) from
+# correlated_noise_sensitivity.py.
 L_FINE_CM = [0.5, 1.0, 2.0, 3.0, 5.0, 7.5, 10.0, 15.0, 20.0, 30.0, 50.0]
 L_COARSE_M = [1.0, 2.0]
 L_SWEEP = ([("iid_ref", None)]
@@ -84,7 +84,7 @@ def record_seed(label):
 
 
 # --------------------------------------------------------------------------- #
-# Naive (i.i.d.-assuming) inversion, identical to correlated_noise_sensitivity.recover
+# Inversion assuming i.i.d. noise, as in correlated_noise_sensitivity.recover
 # --------------------------------------------------------------------------- #
 def recover_naive(G, m_true_full, noise):
     K = ls_operator(G)
@@ -96,15 +96,15 @@ def recover_naive(G, m_true_full, noise):
 
 
 # --------------------------------------------------------------------------- #
-# Noise-aware (GLS) inversion via exact whitening
+# Generalized least squares (GLS) by whitening
 # --------------------------------------------------------------------------- #
 def station_arclength(sxyz):
-    """Cumulative along-track distance used by the imported OU generator."""
+    """Cumulative along-track distance used by the noise generator."""
     return np.r_[0.0, np.cumsum(along_track_ds(sxyz))]
 
 
 def ou_covariance(sxyz, L):
-    """Per-axis station covariance of the imported noise model: sigma_w^2 I + sigma_c^2 R."""
+    """Per-axis station covariance of the noise model: sigma_w^2 I + sigma_c^2 R."""
     s = station_arclength(sxyz)
     nR = len(s)
     if np.isinf(L):
@@ -117,7 +117,7 @@ def ou_covariance(sxyz, L):
 
 
 def whitener(sxyz, L):
-    """Lower Cholesky factor Lc of the per-axis covariance (in place, memory-conscious)."""
+    """Lower Cholesky factor Lc of the per-axis covariance (computed in place to save memory)."""
     C = ou_covariance(sxyz, L)
     Lc = sla.cholesky(C, lower=True, overwrite_a=True, check_finite=False)
     del C
@@ -135,7 +135,7 @@ def whiten_stationmajor(Lc, A, nR, n_axes=3):
 
 
 def recover_gls(G, m_true_full, noise, sxyz, L):
-    """Exact GLS recovery using the true non-diagonal covariance (whitening transform).
+    """GLS recovery using the full (non-diagonal) covariance.
 
     Returns (M_rec, resid_rms_whitened, resid_rms_iid_weighted).
     """
@@ -156,15 +156,13 @@ def recover_gls(G, m_true_full, noise, sxyz, L):
 
 
 def estimator_covariance_comparison(G, sxyz, L, m_true_full):
-    """EXACT (Monte-Carlo-free) covariances of the naive OLS and noise-aware GLS estimators.
+    """Analytic covariances of the ordinary (i.i.d. weights) and generalized least-squares estimators.
 
-    Both estimators are unbiased, so the entire difference in recovery accuracy is the
-    difference between
-        Cov_OLS = (G'G)^-1 G' C G (G'G)^-1        (i.i.d.-assuming weights, true C)
-        Cov_GLS = (G' C^-1 G)^-1                  (Gauss-Markov optimum)
-    Gauss-Markov guarantees Cov_OLS >= Cov_GLS; this quantifies BY HOW MUCH, independently
-    of the Monte Carlo, and also reports how different the two estimator operators are, so
-    "GLS does not help" cannot be confused with "GLS was not actually applied".
+    Both estimators are unbiased, so they differ only in covariance:
+        Cov_OLS = (G'G)^-1 G' C G (G'G)^-1
+        Cov_GLS = (G' C^-1 G)^-1
+    Cov_OLS >= Cov_GLS by the Gauss-Markov theorem. This returns both without Monte Carlo, together
+    with the difference between the two estimator operators.
     """
     nR = len(sxyz)
     p = G.shape[1]
@@ -181,8 +179,7 @@ def estimator_covariance_comparison(G, sxyz, L, m_true_full):
     GtG_inv = np.linalg.inv(G.T @ G)
     cov_ols = GtG_inv @ (G.T @ CG) @ GtG_inv
     cov_gls = np.linalg.inv(Gw.T @ Gw)
-    # effective operator of the GLS estimator acting on RAW data, for an honest
-    # "the estimators really are different" check
+    # GLS estimator as an operator on the raw (unwhitened) data
     K_ols = ls_operator(G)
     K_g = np.linalg.solve(Gw.T @ Gw, Gw.T).reshape(p, nR, 3)
     Kg_raw = np.empty((p, nR, 3))
@@ -211,7 +208,7 @@ def estimator_covariance_comparison(G, sxyz, L, m_true_full):
 
 
 def verify_covariance_model(n_draws=20000, nR=300):
-    """Empirical covariance of the imported generator vs the analytic model used for GLS."""
+    """Empirical covariance of the noise generator compared with the analytic model used for GLS."""
     sxyz = generate_rille_traverse(0.0, (nR - 1) * SPACING, -1.0, 0.5, SPACING)
     out = {}
     for L in (0.05, 0.20):
@@ -238,7 +235,7 @@ def verify_covariance_model(n_draws=20000, nR=300):
 # Threshold helpers
 # --------------------------------------------------------------------------- #
 def crossing(xs, ys, level):
-    """Largest x at which piecewise-linear y(x) is still <= level (ys INCREASING in x)."""
+    """Largest x at which the piecewise-linear y(x) is still <= level (y increasing in x)."""
     xs, ys = np.asarray(xs, float), np.asarray(ys, float)
     o = np.argsort(xs)
     xs, ys = xs[o], ys[o]
@@ -287,7 +284,7 @@ def main():
     results = {"isolated_outcrop": {}, "three_layer": {}, "effective_samples": {},
                "noise_aware_gls": {}, "headline": {}}
 
-    # ---- PART 1a: isolated outcrop, naive inversion ----
+    # Part 1a: isolated outcrop, i.i.d. weights
     print("\n=== PART 1a: isolated outcrop (K=1), naive i.i.d.-assuming inversion ===")
     iso_surveys = {}
     for name, ttype in DRIVE.items():
@@ -322,7 +319,7 @@ def main():
                   f"dM mean={me['mean']:+8.2f}% | rms={rms.mean():.4f}", flush=True)
             del noise
 
-    # ---- PART 1b: three-layer wall, naive inversion ----
+    # Part 1b: three-layer wall, i.i.d. weights
     print("\n=== PART 1b: three-layer wall (K=3), baseline traverse, naive inversion ===")
     mesh = three_layer_mesh()
     sxyz3 = generate_rille_traverse(WALL_X0, WALL_X1, WALL_Y, WALL_Z, SPACING)
@@ -359,7 +356,7 @@ def main():
               f"dM mean={me['mean']:+8.2f}% | rms={rms.mean():.4f}", flush=True)
         del noise
 
-    # ---- headline requirement ----
+    # Maximum tolerable L
     print("\n=== HEADLINE REQUIREMENT ===")
     head = {}
     for name in DRIVE:
@@ -397,7 +394,7 @@ def main():
               f"{fmt_req(r)}")
     results["headline"] = head
 
-    # ---- PART 2: noise-aware (GLS) inversion, matched draws ----
+    # Part 2: GLS inversion on the same draws
     print(f"\n=== PART 2: noise-aware GLS inversion (exact whitening), N={N_GLS} ===")
     gls = {"isolated_drive_around": {}, "three_layer": {}}
     sxyz_da = iso_surveys[HEADLINE_SURVEY]
@@ -478,7 +475,7 @@ def main():
         del noise
     results["noise_aware_gls"] = gls
 
-    # requirement with the noise-aware (GLS) inversion, on the GLS grid
+    # Maximum tolerable L with GLS, on the GLS grid
     gl = gls["isolated_drive_around"]
     Lg = [gl[f"{c:g}cm"]["correlation_length_m"] for c in L_GLS_ISO_CM]
     Eg = [gl[f"{c:g}cm"]["noise_aware_gls"]["dir_err_deg"]["mean"] for c in L_GLS_ISO_CM]

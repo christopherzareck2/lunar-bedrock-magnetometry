@@ -1,8 +1,8 @@
 """Figure 5 - Sensitivity of isolated-outcrop recovery to imaging mis-pose (pointing and range errors), (A) drive-around, (B) drive-by.
 
 Data: results/analysis/a02_isolated_outcrop_paper_geometry.json, "lidar_grid". Grid: pointing error bound
-0-6 deg x range error bound 0-0.30 m (7 x 7). Each cell: N = 100 inversions with the assumed outcrop
-rigidly rotated and translated by a random draw within the bounds; data from the true geometry.
+0-6 deg x range error bound 0-0.30 m (7 x 7). Each cell: N = 100 inversions with the outcrop model rigidly
+rotated and translated by a random draw within the bounds; the data come from the true geometry.
 Lower-left triangle (orange): median direction error. Upper-right triangle (blue): median |dM|.
 """
 import os, json

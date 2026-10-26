@@ -1,7 +1,7 @@
-"""a02b - Detection sweep (Figure 4) at N = 1000 per point, consistent with the baseline.
+"""a02b - Detection sweep (Figure 4) at N = 1000 per point.
 
-Every point uses N = 1000, and the 1x point uses the baseline seed of a02, so it reproduces the
-baseline exactly. Geometry, noise and solver are imported from a02.
+The 1x point uses the baseline seed of a02 and so reproduces the a02 baseline. Geometry, noise and solver
+are imported from a02.
 
 Run:  python analysis/a02b_detection_sweep_N1000.py
 Out:  results/analysis/a02b_detection_sweep_N1000.json
@@ -10,7 +10,7 @@ import os, sys, json, time
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-import a02_isolated_outcrop_paper_geometry as A02          # sets engine path and cwd
+import a02_isolated_outcrop_paper_geometry as A02          # sets the engine path and working directory
 from inversion_helpers import prism_cell_operator, seed_for
 
 N = 1000

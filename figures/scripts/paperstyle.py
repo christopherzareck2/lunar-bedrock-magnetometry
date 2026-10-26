@@ -94,18 +94,18 @@ def start_dot(ax, x, y, s=90):
 def save(fig, name):
     os.makedirs(OUT, exist_ok=True)
     for ext in ("pdf", "png"):
-        # no dates or software versions in the files, so rerunning a figure script gives identical bytes
+        # no dates or software versions in the files, so reruns give identical bytes
         meta = {"CreationDate": None, "Creator": None, "Producer": None} if ext == "pdf" else {"Software": None}
         fig.savefig(os.path.join(OUT, f"{name}.{ext}"), metadata=meta)
     plt.close(fig)
     print(f"wrote figures/output/{name}.pdf/.png")
 
 
-# ---- shared layout for the three scenario-geometry figures (Figures 1-3) ----
-GEO_W = 13.0                   # figure width (in); all three are placed full width in the paper
+# Layout shared by the geometry figures (Figures 1-3)
+GEO_W = 13.0                   # figure width (in)
 GEO_TRAV_LW = 3.0              # traverse line width, same on dark plan views and white sections
-# one style key for all three figures: solid = primary path, dashed = secondary path at another
-# standoff or height, dash-dot = drive-by alternative, thin grey dotted = sensor-height guide in sections
+# Line styles: solid = primary path, dashed = secondary path at another standoff or height,
+# dash-dot = drive-by alternative, thin grey dotted = sensor-height guide in sections
 LS_LOOP, LS_LOOP2, LS_BY, LS_ELEV = "-", (0, (5, 3)), (0, (6, 2, 1.5, 2)), (0, (5, 3))
 
 
@@ -117,8 +117,9 @@ def ground(ax, x0, x1, depth):
 
 
 def trav(ax, xs, ys, ls="-", label=None, zorder=6):
+    # snap=True makes the rendering independent of the number of stations in the path
     ax.plot(xs, ys, color=TRAV_DARK, lw=GEO_TRAV_LW, ls=ls, zorder=zorder, label=label,
-            solid_capstyle="butt", dash_capstyle="butt")
+            solid_capstyle="butt", dash_capstyle="butt", snap=True)
 
 
 def start_legend_handle(ax):
@@ -145,10 +146,10 @@ def triad(ax, x0, y0, L, labels=("x", "y"), color="white", out_of_page=None, fs=
         ax.text(x0 - 0.18 * L, y0 - 0.22 * L, f"${out_of_page}$", color=color, fontsize=fs, ha="right", va="top", zorder=12)
 
 
-# ---- layout for Figures 1-3: two columns of width COL_W centred on a fixed 13-in canvas. Plan views sit on top;
-# each cross-section is a true-scale strip directly under the plan view it cuts, sharing its horizontal axis.
-# The canvas is saved without cropping, so all three figures print at the same scale.
-GRID_TOP = 1.15                 # space for the colorbar above the panels (in)
+# Layout for Figures 1-3: two columns of width COL_W centered on a 13 in canvas. Plan views are on top; each
+# cross-section is a true-scale strip under the plan view it cuts, sharing its horizontal axis. The canvas is
+# saved without cropping, so the three figures have the same scale.
+GRID_TOP = 1.15                 # colorbar space above the panels (in)
 COL_W, COL_GAP, SHARE_GAP = 4.3, 0.95, 0.14
 COL_X = [(GEO_W - (2 * COL_W + COL_GAP)) / 2 + i * (COL_W + COL_GAP) for i in (0, 1)]
 
@@ -174,7 +175,7 @@ def colorbar_mid(g):
 
 
 def save_fixed(fig, name):
-    """Save the whole canvas (no tight crop), so the three geometry figures share one scale on the page."""
+    """Save the whole canvas without cropping, so the geometry figures share one scale."""
     from matplotlib.transforms import Bbox
     os.makedirs(OUT, exist_ok=True)
     w, h = fig.get_size_inches()
@@ -186,11 +187,11 @@ def save_fixed(fig, name):
 
 
 LEG_H = 0.62        # band for the one-line legend at the bottom of every geometry figure (in)
-LEG_DROP = 0.80     # distance from the bottom of the lowest panel to the top of the legend (clears the x label)
+LEG_DROP = 0.80     # gap from the lowest panel to the legend (clears the x label)
 
 
 def bottom_legend(g, handles, labels, block_bottom):
-    """The same legend in the same place on Figures 1-3: one line, centred on the canvas, under the panels."""
+    """One-line legend centered under the panels, in the same place on Figures 1-3."""
     return g.fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1 - (block_bottom + LEG_DROP) / g.H),
                         ncol=len(handles), fontsize=13, framealpha=0.95, handlelength=2.4, borderpad=0.6,
                         columnspacing=1.8)

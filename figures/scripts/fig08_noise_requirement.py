@@ -32,8 +32,6 @@ def main():
     ax.plot(Ls, white * np.sqrt(2 * Ls / 1.0), ls="-.", color="#6A3D9A", lw=2.6,
             label=r"$\theta_{\rm white}\sqrt{2L/\Delta x}$", zorder=6)
     xinf = L.max() * 3.2
-    ax.plot([xinf], [inf["none"]["dir_err_deg"]["mean"]], "o", color=ps.ORANGE, ms=9, zorder=5)
-    ax.plot([xinf], [inf["rover_world_dc"]["dir_err_deg"]["mean"]], "s", color=ps.BLUE, ms=9, zorder=5)
     ax.set_xscale("log")
     ax.set_xlim(0.35, xinf * 1.8)
     ticks = [1, 10, 100, 1000, 10000]
@@ -57,6 +55,40 @@ def main():
     bx.text(0.100, 5.3, r"$5\degree$ goal", fontsize=13, color="#6E6E6E")
     ps.panel_letter(bx, "B", dark=False)
     fig.tight_layout(w_pad=3)
+
+    # Axis break: panel A is split into [finite L | gap | L = inf] within the area given by tight_layout.
+    # The L = inf points are drawn in their own narrow axes (shared y) at x = xinf, apart from the curves,
+    # which end at L = 100 m.
+    pos = ax.get_position()
+    full_hi = xinf * 1.8                                    # right limit of the unbroken axis
+    ax_hi = L.max() * 1.8                                   # right limit of the finite-L axes
+    frac = np.log10(ax_hi / 0.35) / np.log10(full_hi / 0.35)   # same cm-per-decade scale as the unbroken axis
+    gap = 0.03
+    ax.set_xlim(0.35, ax_hi)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(["1 cm", "10 cm", "1 m", "10 m", "100 m"])
+    ax.set_position([pos.x0, pos.y0, pos.width * frac, pos.height])
+    axi = fig.add_axes([pos.x0 + pos.width * (frac + gap), pos.y0, pos.width * (1 - frac - gap), pos.height], sharey=ax)
+    axi.axhline(5, color="#8C8C8C", ls="--", lw=1.8, zorder=1)
+    axi.axhline(white, color="black", ls=":", lw=1.4, zorder=1)
+    axi.plot([xinf], [inf["none"]["dir_err_deg"]["mean"]], "o", color=ps.ORANGE, ms=9, zorder=5)
+    axi.plot([xinf], [inf["rover_world_dc"]["dir_err_deg"]["mean"]], "s", color=ps.BLUE, ms=9, zorder=5)
+    axi.set_xlim(xinf * 0.5, xinf * 1.5)
+    axi.set_xticks([xinf])
+    axi.set_xticklabels([r"$\infty$"])
+    axi.tick_params(axis="y", left=False, labelleft=False)
+    ax.spines["right"].set_visible(False)
+    axi.spines["left"].set_visible(False)
+    ax.set_zorder(axi.get_zorder() + 1)                     # keeps the legend (a child of ax) on top
+    brk = dict(marker=[(-1, -1), (1, 1)], markersize=13, mec="black", mew=2.0, ls="none", color="black",
+               clip_on=False, zorder=30, gid="axisbreak")
+    for a, xe in ((ax, 1.0), (axi, 0.0)):                   # break marks where each axes meets the break
+        for ye in (0.0, 1.0):
+            a.plot([xe], [ye], transform=a.transAxes, **brk)[0].set_in_layout(False)   # keep the figure size unchanged
+    # Legend and panel letter at fixed positions on the page
+    ax.get_legend().set_bbox_to_anchor((pos.x0 + 0.56 * pos.width, pos.y0 + 0.995 * pos.height), transform=fig.transFigure)
+    [t for t in ax.texts if t.get_text() == "A"][0].set_position((0.03 / frac, 0.95))
+    ax.xaxis.label.set_x(0.5 / frac)                        # x label centered on the whole panel
     ps.save(fig, "fig08_noise_requirement")
 
 

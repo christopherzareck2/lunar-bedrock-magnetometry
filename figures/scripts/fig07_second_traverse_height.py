@@ -4,7 +4,7 @@ Data: results/engine/elevated_traverse_height_sweep_results.json
 (engine/scripts/elevated_traverse_height_sweep.py): ground traverse fixed at z = 0.5 m,
 second traverse at z2, both at y = -1 m, x = -120..+120 m, 1 cm sampling, joint K = 3 inversion
 (undamped least squares), N = 500 inversions per height, sigma_B = 0.50 nT.
-Mean direction error per flow (flow 1 at the bottom is the oldest, flow 3 at the top the youngest). The condition number of the joint operator
+Mean direction error per flow (flow 1 at the bottom, flow 3 at the top). The condition number of the joint operator
 (minimum 19.6 at z2 = 10 m) is in the JSON and quoted in the text, not plotted. z2 = 0.5 m is the same line driven twice.
 """
 import os, json
@@ -12,8 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import paperstyle as ps
 
-# three clearly different colors (none is the blue used for intensity error elsewhere); line style and marker
-# also separate the flows, as line style separates the two cases in Figure 6
+# Three colors (none is the blue used for intensity error in the other figures); line style and marker also
+# distinguish the flows
 FLOWS = [("layer_1", "Flow 1 (bottom)", "#8C2D04", "o", "-"),
          ("layer_2", "Flow 2 (middle)", ps.ORANGE, "s", (0, (6, 2.5))),
          ("layer_3", "Flow 3 (top)", "#6A3D9A", "^", (0, (1.2, 1.4)))]
@@ -28,7 +28,7 @@ def main():
     fig, ax = plt.subplots(figsize=(9, 6))
     thr = d["headline"]["thresholds"][SOLVER]["all_three_flows_within_5deg"]["interpolated_min_z2_m"]["x"]
     worst = np.max([[h["per_layer_" + SOLVER][k]["dir_err_deg"]["mean"] for k, *_ in FLOWS] for h in H], axis=1)
-    # upper crossing: last height where the worst flow is below 5 deg, interpolated to the next sample
+    # Upper crossing: last height where the worst flow is below 5 deg, interpolated to the next sample
     ok = np.where(worst < 5)[0]
     i = ok.max()
     thr_hi = z[i] + (5 - worst[i]) * (z[i + 1] - z[i]) / (worst[i + 1] - worst[i]) if i + 1 < len(z) else z[i]
